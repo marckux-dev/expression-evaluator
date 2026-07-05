@@ -1,0 +1,42 @@
+{
+  "name": "@marckux/expression-evaluator",
+  "version": "0.1.0",
+  "description": "Minimal, dependency-free and extensible math expression evaluator (infix and RPN). Teach it your own domain operators.",
+  "keywords": [
+    "math",
+    "expression",
+    "evaluator",
+    "parser",
+    "calculator",
+    "rpn",
+    "shunting-yard",
+    "formula"
+  ],
+  "author": "marckux",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marckux-dev/expression-evaluator.git"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^22.5.0",
+    "jest": "^29.7.0",
+    "rimraf": "^6.0.1",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}
