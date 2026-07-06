@@ -4,8 +4,9 @@ import {ExpressionEntity} from "../../domain/entities";
 
 /**
  * Evaluates expressions written in standard (infix) notation, e.g.
- * `3 + 4 * (2 - 1)`. Pipeline: tokenize, disambiguate unary vs binary
- * `+`/`-`, convert to RPN (shunting-yard) and execute.
+ * `3 + 4 * (2 - 1)`. Pipeline: tokenize, make implicit multiplications
+ * explicit (`2PI`, `(1+2)(3+4)`), disambiguate unary vs binary `+`/`-`,
+ * convert to RPN (shunting-yard) and execute.
  *
  * The `evaluate()` convenience function wraps this class; instantiate it
  * directly when you want to hold on to an evaluator or inject it behind
@@ -22,6 +23,7 @@ export class EvaluateStandardExpressionUsecase implements EvaluatorInterface {
 
     const expressionEntity: ExpressionEntity = builder
       .tokenize()
+      .manageImplicitMultiplication()
       .manageOperatorOverload()
       .toRpn()
       .build();

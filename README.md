@@ -8,6 +8,7 @@ few lines.
 - **Zero runtime dependencies**, tiny footprint.
 - Standard (infix) notation with the usual precedence, associativity and parentheses — plus RPN.
 - Built-in: `+ - * / ^ !`, `sin`, `cos`, `sqrt`, variadic `max(...)`, constants `PI` and `E`.
+- **Implicit multiplication**: `2PI`, `2(3+4)`, `(1+2)(3+4)`, `2 sin PI`…
 - **Extensible**: add operators and constants by subclassing and registering — no forking.
 - Typed errors (`InvalidExpressionError`, `ValueError`) suitable for showing to end users.
 - Written in TypeScript, ships with type declarations. Fully unit-tested.
@@ -28,6 +29,19 @@ evaluate('sqrt(16) + 2 ^ 3');         // 12
 evaluate('sin(PI / 2) + max(1, 5)');  // 6
 evaluate('5!');                       // 120
 ```
+
+Multiplication can be left implicit wherever it is unambiguous — between a coefficient and a
+constant, around parentheses, or against a function:
+
+```ts
+evaluate('2PI');           // 6.28…  = 2 * PI
+evaluate('(1+2)(3+4)');    // 21     = (1+2) * (3+4)
+evaluate('2 sin PI');      // 0      = 2 * sin(PI)
+evaluate('sin 2 PI + 1');  // 1      — a function absorbs the whole product: sin(2*PI) + 1
+```
+
+A coefficient goes before, never after: `2 3` and `PI2` throw `InvalidExpressionError`
+("Missing operator between…") instead of guessing.
 
 Reverse Polish notation:
 
@@ -83,7 +97,7 @@ evaluate('10 mod 3'); // 1
 | `operation` | The function. Its arity (`operation.length`) sets the number of operands. Operands arrive in reverse order. |
 | `validation` | Optional. Checks operands: return `false` (or throw `ValueError` with your own message) for out-of-domain values. |
 | `precedence` | Higher binds tighter. References: `+`/`-` 10, `*`/`/` 20, functions (`sin`, `sqrt`, `max`) 85, unary `+`/`-` 90, `^`/`!` 95. |
-| `position` | `PREFIX`, `INFIX` (default) or `POSTFIX` (like `!`). |
+| `position` | `PREFIX`, `INFIX` (default) or `POSTFIX` (like `!`). Declare function-like operators as `PREFIX` so they take part in implicit multiplication (`2 sin PI`). |
 | `associativity` | `LEFT` (default) or `RIGHT` (like `^`). |
 
 For a variadic operator (arguments separated by commas, like `max(1, 5, 3)`), set

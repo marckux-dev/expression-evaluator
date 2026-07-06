@@ -17,11 +17,12 @@ y un tamaño de ~8 kB gzip. La arquitectura en dos capas (dominio puro + aplicac
 y su punto fuerte real es la **extensibilidad**: la calculadora de demostración añadió 6
 operadores y una constante en ~100 líneas sin tocar la librería.
 
-El análisis empírico ha destapado **un bug real** (una expresión RPN malformada podía devolver
-`NaN` en vez de lanzar error — ya corregido, junto con el rechazo explícito de paréntesis y
-comas en modo RPN, ver §4.1) y **una invariante frágil sin documentar** (precedencias
-personalizadas ≥ 100 rompen los paréntesis silenciosamente, §4.2). Ninguno bloquea la
-publicación de una 0.1.0 —son casos límite—, pero la invariante debe encabezar la 0.2.0.
+El análisis empírico ha destapado **dos bugs reales, ambos ya corregidos**: una expresión RPN
+malformada podía devolver `NaN` en vez de lanzar error (§4.1), y la coma no delimitaba los
+argumentos de los operadores variádicos — `max(1+1, 2*3)` devolvía `7` en silencio (§4.5).
+Queda **una invariante frágil** (precedencias personalizadas por encima de
+`MAX_OPERATOR_PRECEDENCE` rompen los paréntesis silenciosamente; ya nombrada y documentada,
+falta validarla en el constructor, §4.2), que debe encabezar la 0.2.0.
 
 Nota: el cierre implícito de paréntesis sin cerrar (`3-(2*(3+4` se evalúa como `3-(2*(3+4))`
 = -11) **no es un bug**, es el comportamiento esperado del algoritmo shunting-yard usado —
@@ -81,9 +82,10 @@ Todo lo siguiente se comprobó ejecutando contra `dist/` (no solo leyendo el có
 | `5! - 3` | `117` | El bug histórico unario/binario tras postfijo está corregido y testeado. |
 | `.5 + .5` | `1` | Decimales sin cero inicial aceptados. |
 | `sin sin 0`, `sqrt sqrt 16` | `0`, `2` | Funciones prefijas encadenadas sin paréntesis funcionan, incluida `sqrt` (§4.3). |
-| `max(1, 5, 3)` | `5` | Variádicos en infija correctos. La coma es decorativa: `max(1 5 3)` equivale. |
+| `max(1, 5, 3)`, `max(1+1, 2*3)` | `5`, `6` | Variádicos correctos, también con operadores dentro de los argumentos (bug corregido, §4.5). |
 | `10 / 0`, `sqrt(-1)`, `(-3)!` | `ValueError` | Dominio validado (decisión de diseño: mathjs devolvería `Infinity` en `10/0`). |
-| `2PI`, `2(3+4)` | `InvalidExpressionError` | No hay multiplicación implícita (rechazo limpio). |
+| `2PI`, `2(3+4)`, `(1+2)(3+4)`, `2 sin PI` | `6.28`, `14`, `21`, `2·sin(π)` | **Multiplicación implícita** (implementada 2026-07-07; spec completa en `implicit-multiplication.usecase.test.ts`). |
+| `2 3`, `PI2` | `InvalidExpressionError` | Dos números seguidos, o constante seguida de número, no son multiplicación implícita: "Missing operator between…". |
 | `''`, `'   '` | `InvalidExpressionError` | Expresión vacía rechazada. |
 
 ### 2.4 Métricas de calidad y rendimiento
@@ -159,24 +161,27 @@ La **dirección de dependencias es correcta**: `domain` no importa nada de `appl
 1. **Singleton global** (`TokenMapper`). Estado compartido de proceso: dos partes de una misma
    app no pueden tener vocabularios distintos; los tests que registran tokens contaminan a los
    demás (ya documentado en CLAUDE.md). Es la refactorización candidata número 1 (§8, fase 3).
-2. **La invariante `level += 100` no se protege.** `toRpn()` simula los paréntesis sumando 100
-   a la precedencia por nivel de anidamiento. Funciona porque todas las precedencias internas
-   son ≤ 95, pero **nada valida ni documenta el límite**: un consumidor que registre
-   `precedence: 150` obtiene resultados silenciosamente incorrectos (verificado, §4.2). La
-   invariante segura es `precedence ∈ [1, 99]`.
+2. **La invariante del salto de nivel no se valida.** `toRpn()` simula los paréntesis sumando
+   `MAX_OPERATOR_PRECEDENCE + 1` (= 1000, constante ya nombrada en el dominio) a la
+   precedencia por nivel de anidamiento. Funciona porque todas las precedencias internas son
+   ≤ 95, pero **el constructor de `OperatorEntity` aún no valida el límite**: un consumidor
+   que registre `precedence: 1500` obtiene resultados silenciosamente incorrectos (§4.2). La
+   invariante segura es `precedence ∈ [1, MAX_OPERATOR_PRECEDENCE]` = `[1, 999]`.
 3. **Mutación de precedencia durante el parseo.** `toRpn()` llama a `token.setPrecedence(p +
    level)` sobre el token. No hay bug hoy (cada parseo crea instancias frescas), pero es
    acoplamiento temporal frágil y obliga a que `precedence` sea público y mutable.
 4. **El formateador destruye las posiciones.** El enfoque regex-espacios-`split(' ')` es
    ingenioso y simple, pero pierde el offset original de cada token: los errores no pueden
-   señalar columna, y la tokenización no puede tratar `1e5` (notación científica) ni
-   multiplicación implícita. Un lexer real de una pasada es la mejora arquitectónica que
-   desbloquea las tres cosas a la vez.
-5. **`PREFIX`/`INFIX` no se distinguen en la práctica** — el algoritmo solo trata especial a
-   `POSTFIX`, así que ambos valores son intercambiables en cuanto al resultado. Los integrados
-   ya son consistentes entre sí (`sin`/`cos`/`sqrt`/`max` son todos `PREFIX`+`RIGHT`, §4.3),
-   pero la distinción sigue sin tener efecto real en el algoritmo — es documentación por
-   convención, no una restricción que aplique el código.
+   señalar columna, y la tokenización no puede tratar `1e5` (notación científica). Un lexer
+   real de una pasada es la mejora arquitectónica que desbloquea ambas cosas. (La
+   multiplicación implícita, que antes figuraba aquí, se resolvió sin lexer: es un paso sobre
+   la lista de tokens, `manageImplicitMultiplication()`.)
+5. **`PREFIX`/`INFIX` ahora sí se distinguen** — desde la multiplicación implícita, `position:
+   PREFIX` tiene un efecto real: marca al operador como "puede empezar un operando" (se puede
+   multiplicar implícitamente contra él: `2 sin PI`). `POSTFIX` marca el final de operando.
+   Los integrados son consistentes (`sin`/`cos`/`sqrt`/`max` son todos `PREFIX`+`RIGHT`,
+   §4.3), pero conviene documentar en README que un operador-función personalizado debe
+   declararse `PREFIX` para participar en la multiplicación implícita.
 6. **Aridad 0 = variádico** es un valor mágico con un efecto colateral: una `operation`
    definida con rest params (`(...ns) => …`) tiene `length === 0` y se vuelve variádica sin
    que el autor lo pida. Una opción explícita `variadic: true` sería más honesta.
@@ -224,16 +229,19 @@ así que `EvaluateRpnExpressionUsecase` ahora rechaza explícitamente cualquier 
 en la entrada con `InvalidExpressionError`, antes de que puedan llegar a `execute()` y disparar
 el bug. Ver tests en `evaluate-rpn-expression.usecase.test.ts`.
 
-### 4.2 Precedencias personalizadas ≥ 100 rompen los paréntesis — **gravedad media** (afecta solo a extensiones)
+### 4.2 Precedencias personalizadas fuera de rango rompen los paréntesis — **gravedad media** (afecta solo a extensiones)
 
 ```ts
-// Operador 'T' registrado con precedence: 150, operación resta
+// Operador 'T' registrado con precedence > MAX_OPERATOR_PRECEDENCE (999), operación resta
 evaluate('10 T (2 + 3)')  // → 11   (debería ser 10 - 5 = 5)
 ```
 
-Causa: la debilidad §3.4.2. Arreglo corto: validar `1 ≤ precedence ≤ 99` en el constructor de
-`OperatorEntity` (error inmediato y claro en vez de resultados corruptos) y documentar el
-rango en README/JSDoc. Arreglo definitivo: shunting-yard canónico (fase 3).
+Causa: la debilidad §3.4.2. Mitigación ya aplicada: el salto de nivel es una constante con
+nombre (`MAX_OPERATOR_PRECEDENCE = 999` en el dominio, paso de 1000 en el builder), lo que
+amplía el rango útil de 1–99 a 1–999 y documenta la invariante. Pendiente: validar
+`1 ≤ precedence ≤ MAX_OPERATOR_PRECEDENCE` en el constructor de `OperatorEntity` (error
+inmediato y claro en vez de resultados corruptos) y citar el rango en README/JSDoc. Arreglo
+definitivo: shunting-yard canónico (fase 3).
 
 ### 4.3 `sqrt` encadenada sin paréntesis — **ya corregido en el código actual**
 
@@ -264,13 +272,43 @@ El tokenizador separa `1e5` en `1`, `e`, `5` y el mensaje culpa a una `e` que el
 escribió (y que además colisiona con la constante de Euler `E`). O se soporta la notación
 científica (deseable) o al menos se mejora el mensaje.
 
-### 4.5 Menores
+### 4.5 La coma no delimitaba los argumentos de los variádicos — **corregido**
+
+Descubierto el 2026-07-07 al especificar la multiplicación implícita, corregido el mismo día:
+
+```ts
+evaluate('max(2*PI, 3*E)')  // antes → 25.62 (= PI·3·E); ahora → 8.15 = max(6.28, 8.15) ✓
+evaluate('max(1+1, 2*3)')   // antes → 7;                ahora → 6 ✓
+evaluate('max(2*3, 1+1)')   // antes → 4;                ahora → 6 ✓
+evaluate('max(1, 2, 5)')    // → 5 ✓ (argumentos sin operadores dentro siempre funcionaron)
+```
+
+Causa raíz: en `toRpn()` la `CommaController` no hacía nada, así que los operadores pendientes
+del argumento *k* seguían en la pila cuando empezaban a llegar los operandos del argumento
+*k+1*; al vaciarse (por precedencia o al final) caían en medio del argumento siguiente y los
+valores se reagrupaban a través de la coma. Los tests no lo detectaban porque solo usaban
+`max(1, 2, 5, -2, 3)`, sin operadores dentro de los argumentos (y ese caso pasaba de
+casualidad: el `neg` se aplicaba al `3` final en vez de al `2`, pero a `max` no le afectaba).
+
+Arreglo aplicado: la coma vuelca de la pila los operadores con precedencia efectiva por encima
+del `level` actual — exactamente los del argumento que se cierra, porque cualquier operador
+apilado antes del paréntesis del variádico quedó con precedencia menor que `level`. Cubierto
+con tests de regresión (operadores en los argumentos, `^`, paréntesis anidados y `max` dentro
+de `max`) en `evaluate-standard-expression.usecase.test.ts`. Era además prerrequisito para la
+multiplicación implícita dentro de listas de argumentos (`max(2PI, 3E)`).
+
+El pendiente relacionado que quedaba (`max(2 PI)` devolvía `π` sin error: el variádico se
+tragaba los operandos sueltos) quedó resuelto por la multiplicación implícita ese mismo día:
+`2 PI` es ahora `2*PI`, así que `max(2 PI)` = `2π`.
+
+### 4.6 Menores
 
 - `Infinity + 1` → `Infinity`: `Number('Infinity')` cuela `Infinity` como literal válido.
   Decidir si es feature (documentar) o filtrar.
 - Mensaje `"The evaluated expression gets more than one token"`: gramática mejorable
-  ("yields"/"evaluates to") y es el cajón de sastre que recibe desde `sin(1, 2)` (aridad
-  incorrecta) hasta `2PI` (yuxtaposición). Mensajes más específicos ayudarían.
+  ("yields"/"evaluates to") y sigue siendo el cajón de sastre de `sin(1, 2)` (aridad
+  incorrecta). Las yuxtaposiciones ya no caen aquí: o son multiplicación implícita o dan
+  "Missing operator between…". Mensajes más específicos ayudarían en lo que queda.
 - Ningún error informa de la posición (columna) del problema (§3.4.4).
 
 ---
@@ -278,8 +316,8 @@ científica (deseable) o al menos se mejora el mensaje.
 ## 5. Mejoras de código propuestas (sin cambiar el API)
 
 1. **Corregir §4.2 y §4.4** — caben en una tarde y son compatibles hacia atrás (estrictamente:
-   convierten resultados incorrectos en errores, que es la dirección segura). §4.1 y §4.3 ya
-   están corregidos.
+   convierten resultados incorrectos en errores, que es la dirección segura). §4.1, §4.3 y
+   §4.5 ya están corregidos.
 2. **Nombrar la constante mágica**: `const BRACKET_PRECEDENCE_STEP = 100` en el builder, con
    el comentario de la invariante.
 3. **Eliminar la mutación de precedencia**: calcular la precedencia efectiva (`prec + level`)
@@ -338,7 +376,10 @@ científica (deseable) o al menos se mejora el mensaje.
 
 7. **Evaluadores por instancia** (`createEvaluator()`) con registro aislado; el singleton
    queda como fachada de compatibilidad. (Es a la vez mejora arquitectónica — §3.4.1.)
-8. **Multiplicación implícita opcional** (`2PI`, `2(3+4)`) tras el lexer nuevo, bajo flag.
+8. ~~Multiplicación implícita~~ — **hecha el 2026-07-07**, sin esperar al lexer: es un paso
+   sobre la lista de tokens (`manageImplicitMultiplication()`), siempre activa (no bajo flag),
+   con `2 3` y `PI2` como errores explícitos. Spec completa en
+   `implicit-multiplication.usecase.test.ts`.
 9. **Exponer el RPN/AST** (`toRpnString()`, recorrido del árbol) para depuración y tooling.
 10. **Pack opcional de comparadores/booleanos** (`>`, `<`, `==`, `and`, `or`) orientado a
     rule engines — solo si aparece demanda; ensancha el alcance del proyecto.
@@ -401,9 +442,11 @@ defectos conocidos son casos límite documentados aquí y ninguno compromete el 
 
 ### Fase 1 — 0.2.0 "Robustez" (1–2 sesiones)
 
-- Bug §4.4 (mensaje de `1e5`). §4.1 (RPN→NaN / paréntesis y comas en RPN) y §4.3 (`sqrt`
-  encadenada) ya están corregidos.
-- Validar `precedence ∈ [1, 99]` en `OperatorEntity` (§4.2) y documentar el rango.
+- Bug §4.4 (mensaje de `1e5`). §4.1 (RPN→NaN / paréntesis y comas en RPN), §4.3 (`sqrt`
+  encadenada) y §4.5 (la coma no delimitaba los argumentos de los variádicos) ya están
+  corregidos.
+- Validar `precedence ∈ [1, MAX_OPERATOR_PRECEDENCE]` en `OperatorEntity` (§4.2) y documentar
+  el rango en README/JSDoc.
 - Notación científica en el tokenizador.
 - Tests de los huecos de cobertura (§5.5) + tests de regresión de cada bug.
 - ESLint + Prettier + GitHub Actions (test/build/coverage en Node 18/20/22).
@@ -425,11 +468,11 @@ tabla de §7 deja de tener carencias en negrita.
 ### Fase 3 — 0.4.0 "Arquitectura" (refactor mayor, con la red de fase 2)
 
 - Lexer real de una pasada con posiciones (sustituye `FormatterUsecase` + `split`).
-- Shunting-yard canónico con pila de paréntesis (elimina la invariante del 100 y la mutación
-  de precedencia).
+- Shunting-yard canónico con pila de paréntesis (elimina la invariante del salto de nivel y
+  la mutación de precedencia). Debe preservar la semántica de la multiplicación implícita
+  (ya implementada), fijada por su spec.
 - Errores con columna (`InvalidExpressionError.position`).
 - `createEvaluator()` por instancia; el singleton pasa a fachada retrocompatible.
-- Multiplicación implícita bajo flag (ahora es barato).
 
 **Criterio de salida:** los tests de propiedades pasan idénticos antes y después del refactor;
 ningún breaking change en los exports existentes.

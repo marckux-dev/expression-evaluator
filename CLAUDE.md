@@ -80,6 +80,8 @@ Built-in tokens are **auto-registered**: `tokens.register.ts` bulk-registers eve
 singleton (`application/mappers/token.mapper.ts`), which maps a symbol string to its token
 class. Adding a built-in operator = new file + export in `operators/index.ts`, nothing else.
 This is why each token is its own file with a default-constructible class (`new TokenClass()`).
+Exception: `ImplicitMultiplicationOperator` is deliberately **not** exported from the barrel —
+it is builder-inserted only, and registering it would clobber `*` in the mapper.
 
 Precedence references: `+`/`-` binary 10, `*`/`/` 20, prefix functions (`sin`, `sqrt`,
 `max`) 85, unary `+`/`-` 90, `^` and `!` 95.
@@ -92,11 +94,18 @@ Precedence references: `+`/`-` binary 10, `*`/`/` 20, prefix functions (`sin`, `
    become `ConstantEntity`, everything else looked up via `TokenMapper`).
 3. For standard (infix) expressions, `StandardExpressionBuilder` (extends `ExpressionBuilder`)
    adds:
+   - `manageImplicitMultiplication()` — inserts `ImplicitMultiplicationOperator` (precedence
+     85, RIGHT — behaves like the prefix-function chain: `2 sin PI` = `2*sin(PI)`,
+     `sin 2 PI` = `sin(2*PI)`) between operand-ending and operand-starting tokens (`2PI`,
+     `(1+2)(3+4)`, `3!2`). A number after a number/constant throws ("Missing operator
+     between…"). Spec: `implicit-multiplication.usecase.test.ts`.
    - `manageOperatorOverload()` — disambiguates `+`/`-` as unary (`PositiveOperator`/
      `NegationOperator`) vs binary based on the preceding token.
    - `toRpn()` — shunting-yard conversion to RPN, using bracket nesting (`level`, in steps of
-     100 added to precedence) to handle parens, and operator precedence/associativity/position
-     for ordering. POSTFIX operators (e.g. factorial `!`) go straight to the output stack.
+     `MAX_OPERATOR_PRECEDENCE + 1` = 1000 added to precedence) to handle parens, and operator
+     precedence/associativity/position for ordering. POSTFIX operators (e.g. factorial `!`)
+     go straight to the output stack. A comma flushes the current argument's pending
+     operators (keeps variadic arguments isolated).
 4. `ExpressionEntity.evaluate()` — executes RPN tokens against a stack: constants/controllers
    get pushed, operators call `execute(stack)` which pops operands (respecting `EofController`
    for variadic operators), runs `validation` then `operation`, and pushes a new

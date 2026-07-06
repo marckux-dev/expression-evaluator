@@ -89,6 +89,22 @@ describe('evaluate-standard-expression.usecase', () => {
     expect(result).toBe(5);
   });
 
+  it('should isolate variadic arguments that contain operators (comma flushes them)', () => {
+    const examples = [
+      { input: 'max(2*PI, 3*E)', expected: 3 * Math.E },
+      { input: 'max(1+1, 2*3)', expected: 6 },
+      { input: 'max(2*3, 1+1)', expected: 6 },
+      { input: 'max(2^2, 3^2)', expected: 9 },
+      { input: 'max(2*(3+4), 5*6)', expected: 30 },
+      { input: 'max(max(1,2), 3)', expected: 3 },
+      { input: 'max(1, -2, 3*(-2))', expected: 1 },
+    ];
+    examples.forEach(example => {
+      const result = evaluator.execute(example.input);
+      expect(result).toBeCloseTo(example.expected, 10);
+    });
+  });
+
   it('should evaluate a expression with a postfix operator', () => {
     const input: string = '5!';
     const result = evaluator.execute(input);
