@@ -1,8 +1,9 @@
 // src/domain/entities/operators/division.operator.ts
 
-import {OperatorEntity} from "../operator.entity";
-import {ValueError} from "../errors";
+import { OperatorEntity } from '../operator.entity';
+import { ValueError } from '../errors';
 
+// Operands arrive reversed: n1 is the divisor.
 const division = (n1: number, n2: number) => n2 / n1;
 const divisionValidation = (n1: number, n2: number) => {
   if (n1 === 0) {

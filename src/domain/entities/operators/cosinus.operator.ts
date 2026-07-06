@@ -1,4 +1,8 @@
-import {OperatorAssociativity, OperatorEntity} from "../operator.entity";
+import {
+  OperatorAssociativity,
+  OperatorEntity,
+  OperatorPosition,
+} from '../operator.entity';
 
 export class CosinusOperator extends OperatorEntity {
   constructor() {
@@ -6,7 +10,8 @@ export class CosinusOperator extends OperatorEntity {
       operation: Math.cos,
       symbol: 'cos',
       precedence: 85,
-      associativity: OperatorAssociativity.RIGHT
+      position: OperatorPosition.PREFIX,
+      associativity: OperatorAssociativity.RIGHT,
     });
   }
 }

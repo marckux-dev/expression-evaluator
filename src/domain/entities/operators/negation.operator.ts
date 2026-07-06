@@ -1,4 +1,8 @@
-import {OperatorAssociativity, OperatorEntity} from "../operator.entity";
+import {
+  OperatorAssociativity,
+  OperatorEntity,
+  OperatorPosition,
+} from '../operator.entity';
 
 const negation = (n: number): number => -n;
 
@@ -8,7 +12,8 @@ export class NegationOperator extends OperatorEntity {
       operation: negation,
       symbol: 'neg',
       precedence: 90,
-      associativity: OperatorAssociativity.RIGHT
+      position: OperatorPosition.PREFIX,
+      associativity: OperatorAssociativity.RIGHT,
     });
   }
 }

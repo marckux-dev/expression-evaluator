@@ -1,4 +1,9 @@
-
+/**
+ * Prepares a raw expression string for tokenization: surrounds every
+ * symbol and every word with spaces and collapses runs of whitespace, so
+ * the result can be split on single spaces. `'3+sin(PI)'` becomes
+ * `'3 + sin ( PI )'`.
+ */
 export class FormatterUsecase {
 
   execute(expression: string): string {

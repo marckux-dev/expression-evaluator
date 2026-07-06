@@ -1,4 +1,8 @@
-import {OperatorAssociativity, OperatorEntity} from "../operator.entity";
+import {
+  OperatorAssociativity,
+  OperatorEntity,
+  OperatorPosition,
+} from '../operator.entity';
 
 const positive = (n: number): number => n;
 
@@ -8,7 +12,8 @@ export class PositiveOperator extends OperatorEntity {
       operation: positive,
       symbol: 'pos',
       precedence: 90,
-      associativity: OperatorAssociativity.RIGHT
+      position: OperatorPosition.PREFIX,
+      associativity: OperatorAssociativity.RIGHT,
     });
   }
 }

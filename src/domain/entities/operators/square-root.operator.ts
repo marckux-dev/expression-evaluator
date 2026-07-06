@@ -1,5 +1,9 @@
-import {OperatorEntity} from "../operator.entity";
-import {ValueError} from "../errors";
+import {
+  OperatorAssociativity,
+  OperatorEntity,
+  OperatorPosition,
+} from '../operator.entity';
+import { ValueError } from '../errors';
 
 const validateSquareRoot = (n: number) => {
   if (n < 0) {
@@ -14,8 +18,9 @@ export class SquareRootOperator extends OperatorEntity {
       operation: Math.sqrt,
       validation: validateSquareRoot,
       symbol: 'sqrt',
-      precedence: 85
+      precedence: 85,
+      position: OperatorPosition.PREFIX,
+      associativity: OperatorAssociativity.RIGHT,
     });
   }
-
 }

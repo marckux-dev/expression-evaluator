@@ -24,7 +24,7 @@ npm install @marckux/expression-evaluator
 import { evaluate } from '@marckux/expression-evaluator';
 
 evaluate('3 + 4 * (2 - 1)');          // 7
-evaluate('sqrt(2) ^ 2');              // 2
+evaluate('sqrt(16) + 2 ^ 3');         // 12
 evaluate('sin(PI / 2) + max(1, 5)');  // 6
 evaluate('5!');                       // 120
 ```
@@ -66,7 +66,7 @@ const modulo = (n1: number, n2: number): number => n2 % n1;
 
 class ModuloOperator extends OperatorEntity {
   constructor() {
-    super({ operation: modulo, symbol: 'mod', precedence: 90 });
+    super({ operation: modulo, symbol: 'mod', precedence: 20 }); // same precedence as * and /
   }
 }
 
@@ -81,8 +81,8 @@ evaluate('10 mod 3'); // 1
 | --- | --- |
 | `symbol` | Token in the expression: a symbol (`%`) or a word (`mod`). |
 | `operation` | The function. Its arity (`operation.length`) sets the number of operands. Operands arrive in reverse order. |
-| `validation` | Optional. Checks operands and throws `ValueError` for out-of-domain values. |
-| `precedence` | Higher binds tighter. References: `+`/`-` 50, `*`/`/` 90, functions 85, `^`/`!` 95. |
+| `validation` | Optional. Checks operands: return `false` (or throw `ValueError` with your own message) for out-of-domain values. |
+| `precedence` | Higher binds tighter. References: `+`/`-` 10, `*`/`/` 20, functions (`sin`, `sqrt`, `max`) 85, unary `+`/`-` 90, `^`/`!` 95. |
 | `position` | `PREFIX`, `INFIX` (default) or `POSTFIX` (like `!`). |
 | `associativity` | `LEFT` (default) or `RIGHT` (like `^`). |
 

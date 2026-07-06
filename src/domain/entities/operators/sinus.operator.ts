@@ -1,4 +1,4 @@
-import {OperatorAssociativity, OperatorEntity} from "../operator.entity";
+import {OperatorAssociativity, OperatorEntity, OperatorPosition} from "../operator.entity";
 
 export class SinusOperator extends OperatorEntity {
   constructor() {
@@ -6,6 +6,7 @@ export class SinusOperator extends OperatorEntity {
       operation: Math.sin,
       symbol: 'sin',
       precedence: 85,
+      position: OperatorPosition.PREFIX,
       associativity: OperatorAssociativity.RIGHT
     });
   }

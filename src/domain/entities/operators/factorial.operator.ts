@@ -1,5 +1,9 @@
-import {OperatorAssociativity, OperatorEntity, OperatorPosition} from "../operator.entity";
-import {ValueError} from "../errors";
+import {
+  OperatorAssociativity,
+  OperatorEntity,
+  OperatorPosition,
+} from '../operator.entity';
+import { ValueError } from '../errors';
 
 const factorial = (n: number) => {
   let result = 1;
@@ -7,7 +11,7 @@ const factorial = (n: number) => {
     result *= i;
   }
   return result;
-}
+};
 
 const factorialValidation = (n: number) => {
   if (n < 0) {
@@ -27,7 +31,7 @@ export class FactorialOperator extends OperatorEntity {
       symbol: '!',
       precedence: 95,
       position: OperatorPosition.POSTFIX,
-      associativity: OperatorAssociativity.RIGHT
+      associativity: OperatorAssociativity.RIGHT,
     });
   }
 }

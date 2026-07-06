@@ -1,4 +1,5 @@
 import {EvaluateStandardExpressionUsecase} from "./evaluate-standard-expression.usecase";
+import {InvalidExpressionError, ValueError} from "../../domain/entities/errors";
 
 const evaluator = new EvaluateStandardExpressionUsecase();
 
@@ -121,6 +122,60 @@ describe('evaluate-standard-expression.usecase', () => {
     });
   });
 
+  it('should treat binary +/- after a postfix operator as binary', () => {
+    const examples = [
+      {
+        input: '5! - 3',
+        expected: 117
+      },
+      {
+        input: '3! + 4',
+        expected: 10
+      }
+    ];
+    examples.forEach(example => {
+      const result = evaluator.execute(example.input);
+      expect(result).toBe(example.expected);
+    });
+  });
+
+  it('should implicitly close unclosed opening brackets at the end of the expression', () => {
+    const examples = [
+      {
+        input: '3-(2*(3+4',
+        expected: -11
+      },
+      {
+        input: '(((1+2',
+        expected: 3
+      },
+      {
+        input: '2*(3+4!',
+        expected: 54
+      }
+    ];
+    examples.forEach(example => {
+      const result = evaluator.execute(example.input);
+      expect(result).toBe(example.expected);
+    });
+  });
+
+  it('should throw InvalidExpressionError for an extra closing bracket', () => {
+    expect(() => evaluator.execute('3+4)')).toThrow(InvalidExpressionError);
+  });
+
+  it('should throw InvalidExpressionError for an empty or blank expression', () => {
+    expect(() => evaluator.execute('')).toThrow(InvalidExpressionError);
+    expect(() => evaluator.execute('   ')).toThrow(InvalidExpressionError);
+  });
+
+  it('should throw ValueError for out-of-domain operands', () => {
+    expect(() => evaluator.execute('10 / 0')).toThrow(ValueError);
+    expect(() => evaluator.execute('sqrt(-1)')).toThrow(ValueError);
+    expect(() => evaluator.execute('(-3)!')).toThrow(ValueError);
+    expect(() => evaluator.execute('max()')).toThrow(ValueError);
+  });
+
   it ('should evaluate a expression with trigonometric functions', () => {
     const examples = [
       {
@@ -140,6 +195,39 @@ describe('evaluate-standard-expression.usecase', () => {
       const result = evaluator.execute(example.input);
       expect(result).toBe(example.expected);
     });
+  });
+
+  it('should chain PREFIX functions of the same kind without parentheses', () => {
+    const examples = [
+      { input: 'sqrt sqrt 16', expected: 2 },
+      { input: 'sqrt sqrt sqrt 256', expected: 2 },
+      { input: 'sin sin 0', expected: 0 },
+      { input: 'cos cos 0', expected: Math.cos(Math.cos(0)) },
+    ];
+    examples.forEach(example => {
+      const result = evaluator.execute(example.input);
+      expect(result).toBe(example.expected);
+    });
+  });
+
+  it('should chain different PREFIX functions without parentheses', () => {
+    const examples = [
+      { input: 'sqrt sin (PI/2)', expected: 1 },
+      { input: 'sqrt cos 0', expected: 1 },
+      { input: 'sin sqrt 0', expected: 0 },
+      { input: 'cos sqrt 0', expected: 1 },
+      { input: 'sqrt sqrt cos 0', expected: 1 },
+    ];
+    examples.forEach(example => {
+      const result = evaluator.execute(example.input);
+      expect(result).toBe(example.expected);
+    });
+  });
+
+  it('should evaluate a chained PREFIX function the same with or without parentheses', () => {
+    expect(evaluator.execute('sqrt sqrt 16')).toBe(evaluator.execute('sqrt(sqrt(16))'));
+    expect(evaluator.execute('sqrt cos 0')).toBe(evaluator.execute('sqrt(cos(0))'));
+    expect(evaluator.execute('cos sin PI')).toBe(evaluator.execute('cos(sin(PI))'));
   });
 
 });

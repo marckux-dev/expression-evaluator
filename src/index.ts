@@ -2,7 +2,7 @@
 
 // Evaluators
 export { EvaluateStandardExpressionUsecase } from './application/usecases/evaluate-standard-expression.usecase';
-export { EvaluateRpnExpressionUseCase } from './application/usecases/evaluate-rpn-expression.usecase';
+export { EvaluateRpnExpressionUsecase } from './application/usecases/evaluate-rpn-expression.usecase';
 export { EvaluatorInterface } from './application/usecases/evaluator.interface';
 
 // Errors
@@ -20,7 +20,7 @@ export {
 export { TokenMapper } from './application/mappers';
 
 import { EvaluateStandardExpressionUsecase } from './application/usecases/evaluate-standard-expression.usecase';
-import { EvaluateRpnExpressionUseCase } from './application/usecases/evaluate-rpn-expression.usecase';
+import { EvaluateRpnExpressionUsecase } from './application/usecases/evaluate-rpn-expression.usecase';
 
 /**
  * Evaluates a math expression in standard (infix) notation.
@@ -38,10 +38,14 @@ export function evaluate(expression: string): number {
 
 /**
  * Evaluates a math expression in reverse Polish notation (RPN).
+ * Tokens must be separated by spaces.
  *
  * @example
  * evaluateRpn('3 4 2 1 - * +'); // 7
+ *
+ * @throws {InvalidExpressionError} if the expression is malformed.
+ * @throws {ValueError} if an operand is out of an operator's domain.
  */
 export function evaluateRpn(expression: string): number {
-  return new EvaluateRpnExpressionUseCase().execute(expression);
+  return new EvaluateRpnExpressionUsecase().execute(expression);
 }

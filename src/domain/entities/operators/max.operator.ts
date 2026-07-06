@@ -1,9 +1,13 @@
-
-import {OperatorAssociativity, OperatorEntity, OperatorPosition} from "../operator.entity";
+import {
+  OperatorAssociativity,
+  OperatorEntity,
+  OperatorPosition,
+} from '../operator.entity';
+import { ValueError } from '../errors';
 
 const validateMax = (...operands: number[]) => {
   if (operands.length === 0) {
-    throw new Error('Max operator expects at least one operand');
+    throw new ValueError('Max operator expects at least one operand');
   }
   return true;
 };
@@ -16,8 +20,9 @@ export class MaxOperator extends OperatorEntity {
       symbol: 'max',
       precedence: 85,
       position: OperatorPosition.PREFIX,
-      associativity: OperatorAssociativity.RIGHT
+      associativity: OperatorAssociativity.RIGHT,
     });
+    // Variadic: collect operands until the EOF sentinel pushed by toRpn().
     this.numberOfOperands = 0;
   }
 }
