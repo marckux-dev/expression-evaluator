@@ -10,3 +10,4 @@ export * from './factorial.operator';
 export * from './cosinus.operator';
 export * from './sinus.operator';
 export * from './square-root.operator';
+export * from './exponential.operator';

@@ -18,8 +18,8 @@ export class EvaluateStandardExpressionUsecase implements EvaluatorInterface {
    * @throws {InvalidExpressionError} if the expression is malformed.
    * @throws {ValueError} if an operand is out of an operator's domain.
    */
-  execute(expression: string): number {
-    const builder = new StandardExpressionBuilder(expression);
+  execute(expression: string, variables?: Record<string, number>): number {
+    const builder = new StandardExpressionBuilder(expression, variables);
 
     const expressionEntity: ExpressionEntity = builder
       .tokenize()

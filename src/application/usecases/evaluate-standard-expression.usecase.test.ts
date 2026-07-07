@@ -83,6 +83,19 @@ describe('evaluate-standard-expression.usecase', () => {
     expect(result).toBe(7.75);
   });
 
+  it('should evaluate underscore-grouped numbers (JS-style digit separators)', () => {
+    const examples = [
+      { input: '1_000_000', expected: 1000000 },
+      { input: '1_523_245.45', expected: 1523245.45 },
+      { input: '1.000_001', expected: 1.000001 },
+      { input: '1_000 + 2_000', expected: 3000 },
+    ];
+    examples.forEach(example => {
+      const result = evaluator.execute(example.input);
+      expect(result).toBe(example.expected);
+    });
+  });
+
   it('should evaluate a expression with a function with undefined number of operands', () => {
     const input: string = 'max (1, 2, 5, -2, 3)';
     const result = evaluator.execute(input);
@@ -91,7 +104,7 @@ describe('evaluate-standard-expression.usecase', () => {
 
   it('should isolate variadic arguments that contain operators (comma flushes them)', () => {
     const examples = [
-      { input: 'max(2*PI, 3*E)', expected: 3 * Math.E },
+      { input: 'max(2*PI, 3*exp(1))', expected: 3 * Math.E },
       { input: 'max(1+1, 2*3)', expected: 6 },
       { input: 'max(2*3, 1+1)', expected: 6 },
       { input: 'max(2^2, 3^2)', expected: 9 },

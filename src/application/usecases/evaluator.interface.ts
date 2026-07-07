@@ -4,5 +4,5 @@
  * dependency.
  */
 export interface EvaluatorInterface {
-  execute: (expression: string) => number;
+  execute: (expression: string, variables?: Record<string, number>) => number;
 }

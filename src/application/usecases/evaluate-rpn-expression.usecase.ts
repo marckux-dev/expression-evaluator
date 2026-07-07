@@ -19,8 +19,8 @@ export class EvaluateRpnExpressionUsecase implements EvaluatorInterface {
    *   contains a bracket or comma (meaningless in RPN).
    * @throws {ValueError} if an operand is out of an operator's domain.
    */
-  execute(expression: string): number {
-    const builder = new ExpressionBuilder(expression);
+  execute( expression: string, variables?: Record<string, number>): number {
+    const builder = new ExpressionBuilder(expression, variables);
     const tokens = builder.tokenize().getTokens();
     const invalidToken = tokens.find(token =>
       token instanceof OpenBracketController

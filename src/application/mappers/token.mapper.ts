@@ -1,6 +1,6 @@
-import {TokenInterface} from "../../domain/entities";
-import {InvalidExpressionError} from "../../domain/entities/errors/invalid-expression.error";
-import {tokensRegister} from "./tokens.register";
+import { TokenInterface } from '../../domain/entities';
+import { InvalidExpressionError } from '../../domain/entities/errors/invalid-expression.error';
+import { tokensRegister } from './tokens.register';
 
 type TokenConstructor = new () => TokenInterface;
 
@@ -27,7 +27,7 @@ export class TokenMapper {
     tokensRegister(this);
   }
 
-  public static getInstance(): TokenMapper{
+  public static getInstance(): TokenMapper {
     if (!TokenMapper.instance) {
       TokenMapper.instance = new TokenMapper();
     }
@@ -38,10 +38,27 @@ export class TokenMapper {
    * Registers a token class under the symbol its instances report. The
    * class must be constructible with no arguments; registering an already
    * known symbol replaces the previous class.
+   *
+   * The symbols `e` and `E` are reserved: they are part of the numeric
+   * exponent notation (`2e5`, `1.5E-3`) and cannot be registered.
    */
   public registerToken(tokenClass: TokenConstructor): void {
     const symbol = new tokenClass().getSymbol();
+    if (symbol === 'e' || symbol === 'E') {
+      throw new Error(
+        `Symbol "${symbol}" is reserved: "e" and "E" are part of the numeric exponent notation (2e5).`
+      );
+    }
     this.tokenMap.set(symbol, tokenClass);
+  }
+
+  /**
+   * Check if a token is in the token Map by symbol
+   *
+   * @returns {boolean} whether the symbol exists in the token Map or not.
+   */
+  public has(symbol: string): boolean {
+    return this.tokenMap.has(symbol);
   }
 
   /**
@@ -52,7 +69,9 @@ export class TokenMapper {
   public getToken(symbol: string): TokenInterface {
     const tokenClass = this.tokenMap.get(symbol);
     if (!tokenClass) {
-      throw new InvalidExpressionError(`${symbol} is not a valid operator or constant`);
+      throw new InvalidExpressionError(
+        `${symbol} is not a valid operator, constant or a registered variable`
+      );
     } else {
       return new tokenClass();
     }

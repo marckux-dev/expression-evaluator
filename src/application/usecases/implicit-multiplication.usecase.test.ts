@@ -31,7 +31,7 @@ describe('implicit multiplication', () => {
         { input: '2PI', expected: 2 * Math.PI },
         { input: '2 PI', expected: 2 * Math.PI },
         { input: '10PI', expected: 10 * Math.PI },
-        { input: '3E', expected: 3 * Math.E },
+        { input: '3 PI', expected: 3 * Math.PI },
         { input: '2.5PI', expected: 2.5 * Math.PI },
       ];
       examples.forEach(({input, expected}) => {
@@ -39,19 +39,13 @@ describe('implicit multiplication', () => {
       });
     });
 
-    it('CONSTANT CONSTANT (space-separated; `PIE` would be a single unknown word)', () => {
-      const examples = [
-        { input: 'PI E', expected: Math.PI * Math.E },
-        { input: 'PI PI', expected: Math.PI * Math.PI },
-      ];
-      examples.forEach(({input, expected}) => {
-        expect(evaluator.execute(input)).toBeCloseTo(expected, 10);
-      });
+    it('CONSTANT CONSTANT (space-separated; `PIPI` would be a single unknown word)', () => {
+      expect(evaluator.execute('PI PI')).toBeCloseTo(Math.PI * Math.PI, 10);
     });
 
     it('cascade of implicit multiplications', () => {
-      expect(evaluator.execute('2 PI E')).toBeCloseTo(2 * Math.PI * Math.E, 8);
-      expect(evaluator.execute('2PI(3+E)4')).toBeCloseTo(2 * Math.PI * (3 + Math.E) * 4, 8);
+      expect(evaluator.execute('2 PI PI')).toBeCloseTo(2 * Math.PI * Math.PI, 8);
+      expect(evaluator.execute('2PI(3+PI)4')).toBeCloseTo(2 * Math.PI * (3 + Math.PI) * 4, 8);
     });
   });
 
@@ -69,14 +63,14 @@ describe('implicit multiplication', () => {
     });
 
     it('CONSTANT followed by `(`', () => {
-      expect(evaluator.execute('PI(3+E)')).toBeCloseTo(Math.PI * (3 + Math.E), 10);
-      expect(evaluator.execute('E(1+1)')).toBeCloseTo(2 * Math.E, 10);
+      expect(evaluator.execute('PI(3+PI)')).toBeCloseTo(Math.PI * (3 + Math.PI), 10);
+      expect(evaluator.execute('PI(1+1)')).toBeCloseTo(2 * Math.PI, 10);
     });
 
     it('`)` followed by NUMBER', () => {
       expect(evaluator.execute('(1+2)3')).toBe(9);
       expect(evaluator.execute('(4+PI)2')).toBeCloseTo((4 + Math.PI) * 2, 10);
-      expect(evaluator.execute('(E+PI)2')).toBeCloseTo((Math.E + Math.PI) * 2, 10);
+      expect(evaluator.execute('(1+PI)2')).toBeCloseTo((1 + Math.PI) * 2, 10);
     });
 
     it('`)` followed by CONSTANT', () => {
@@ -86,7 +80,7 @@ describe('implicit multiplication', () => {
 
     it('`)` followed by `(`', () => {
       expect(evaluator.execute('(1+2)(3+4)')).toBe(21);
-      expect(evaluator.execute('(4 + PI)(3 + 2E)')).toBeCloseTo((4 + Math.PI) * (3 + 2 * Math.E), 8);
+      expect(evaluator.execute('(4 + PI)(3 + 2PI)')).toBeCloseTo((4 + Math.PI) * (3 + 2 * Math.PI), 8);
     });
 
     it('sign handling inside the second factor is preserved', () => {
@@ -106,14 +100,14 @@ describe('implicit multiplication', () => {
     });
 
     it('CONSTANT followed by a PREFIX function multiplies its result', () => {
-      // E sqrt 9 is E*3 = 8.15, NOT sqrt(9E) = 4.95
-      expect(evaluator.execute('E sqrt 9')).toBeCloseTo(3 * Math.E, 10);
+      // PI sqrt 9 is PI*3 = 9.42, NOT sqrt(9*PI) = 5.32
+      expect(evaluator.execute('PI sqrt 9')).toBeCloseTo(3 * Math.PI, 10);
       expect(evaluator.execute('PI sqrt 4')).toBeCloseTo(2 * Math.PI, 10);
     });
 
     it('`)` followed by a PREFIX function multiplies its result', () => {
-      // (5+E) sqrt 4 + 2 is (5+E)*2 + 2
-      expect(evaluator.execute('(5+E) sqrt 4 + 2')).toBeCloseTo((5 + Math.E) * 2 + 2, 10);
+      // (5+PI) sqrt 4 + 2 is (5+PI)*2 + 2
+      expect(evaluator.execute('(5+PI) sqrt 4 + 2')).toBeCloseTo((5 + Math.PI) * 2 + 2, 10);
       expect(evaluator.execute('(1+1) sqrt 9')).toBe(6);
     });
 
@@ -147,9 +141,9 @@ describe('implicit multiplication', () => {
 
     it('explicit operators around implicit products keep their meaning', () => {
       expect(evaluator.execute('1 + 2PI')).toBeCloseTo(1 + 2 * Math.PI, 10);
-      // (2*PI)/(3*E) = 0.77, NOT 2*PI/3*E = 5.69
-      expect(evaluator.execute('2PI/3E')).toBeCloseTo((2 * Math.PI) / (3 * Math.E), 10);
-      expect(evaluator.execute('2E+3PI')).toBeCloseTo(2 * Math.E + 3 * Math.PI, 10);
+      // (2*PI)/(3*PI) = 2/3, NOT 2*PI/3*PI = 2*PI²/3
+      expect(evaluator.execute('2PI/3PI')).toBeCloseTo(2 / 3, 10);
+      expect(evaluator.execute('2PI+3PI')).toBeCloseTo(5 * Math.PI, 10);
     });
   });
 
@@ -158,7 +152,7 @@ describe('implicit multiplication', () => {
     // The comma already flushes pending operators (ANALISIS.md §4.5),
     // so this only needs the implicit operator itself.
     it('each argument multiplies independently', () => {
-      expect(evaluator.execute('max(2PI, 3E)')).toBeCloseTo(3 * Math.E, 10);
+      expect(evaluator.execute('max(2PI, 3PI)')).toBeCloseTo(3 * Math.PI, 10);
     });
   });
 
