@@ -53,9 +53,8 @@ export class TokenMapper {
   }
 
   /**
-   * Check if a token is in the token Map by symbol
-   *
-   * @returns {boolean} whether the symbol exists in the token Map or not.
+   * Whether a token class is registered under `symbol`. Useful to detect
+   * collisions before registering, or to check what a name will resolve to.
    */
   public has(symbol: string): boolean {
     return this.tokenMap.has(symbol);

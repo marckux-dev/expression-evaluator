@@ -17,11 +17,14 @@ import { InvalidExpressionError } from '../../domain/entities/errors';
 export class ExpressionBuilder {
   protected tokens: TokenInterface[] = [];
 
-  /*
-   * @constructor
-   * @param {string} expression - The formatted mathematical expression to parse.
-   * @param {Record<string, number>} variables - A mapping of variable names to their numeric values.
-   * These are used in place of their symbol during tokenization.
+  /**
+   * @param expression The raw expression string to parse.
+   * @param variables Maps variable names to their numeric values; every
+   *   occurrence of a name in the expression is substituted during
+   *   tokenization. Validated up front against the registered tokens.
+   *
+   * @throws {InvalidExpressionError} if a variable name collides with a
+   *   registered operator/constant, or is the reserved `e`/`E`.
    */
   constructor(
     private expression: string,
@@ -36,11 +39,14 @@ export class ExpressionBuilder {
     return this.tokens.slice();
   }
 
-  /*
-   * Check if any variable identificator collides with any
-   * token symbol registered in the TokenMapper, or with the reserved
-   * exponent letters "e"/"E" (part of numeric literals like 2e5)
-   * @throws {InvalidExpressionError} if there is a collision
+  /**
+   * Rejects variable names that collide with a symbol registered in the
+   * {@link TokenMapper}, or with the reserved exponent letters `e`/`E`
+   * (part of numeric literals like `2e5`). The whole mapping is checked,
+   * even names the expression never uses: a collision is a programming
+   * error worth failing fast on.
+   *
+   * @throws {InvalidExpressionError} if there is a collision.
    */
   private static validateVariablesCollision(
     variables: Record<string, number>
@@ -74,12 +80,13 @@ export class ExpressionBuilder {
   }
 
   /**
-   *  Resolve a symbol by looking it up in the {@link TokenMapper}
-   * or fetching its value from the variables mapping. This allows for
-   * evaluating expressions with variable identifiers, but the
-   * final expression should always be resolved to constants. If the symbol
-   * is not found
-   * @throws {InvalidExpressionError}
+   * Resolves one string piece to a token: a numeric literal becomes a
+   * {@link ConstantEntity}, a name present in the variables mapping becomes
+   * a {@link VariableEntity} (already carrying its value), and anything
+   * else is looked up in the {@link TokenMapper}.
+   *
+   * @throws {InvalidExpressionError} if the symbol is not a number, a
+   *   provided variable, or a registered token.
    */
   private resolveSymbol(symbol: string): TokenInterface {
     if (!isNaN(Number(symbol))) {

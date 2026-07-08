@@ -2,14 +2,14 @@ import { FormatNumberUsecase } from './format-number.usecase';
 
 describe('Format Number Usecase', () => {
   const baseTestCases = [
-    { input: Math.sin(Math.PI), expected: '0' },
+    { input: Math.sin(Math.PI), expected: '1.2246467991473532e-16' },
     { input: 2e-10, expected: '2e-10' },
-    { input: 2e-13, expected: '0' },
+    { input: 2e-13, expected: '2e-13' },
     { input: 5.0, expected: '5' },
-    { input: 1234567890123456, expected: '1234567890120000' },
+    { input: 1234567890123456, expected: '1234567890123456' },
   ];
 
-  it('should formats a given number correctly if no parameter is given', () => {
+  it('should apply no rounding at all if no parameter is given', () => {
     baseTestCases.forEach(({ input, expected }) => {
       // arrange
       const usecase = new FormatNumberUsecase();
@@ -27,8 +27,8 @@ describe('Format Number Usecase', () => {
       expect(usecase.execute(-1.23456789)).toBe('-1.23');
     });
 
-    it('should zero out a small number that the default settings would have kept', () => {
-      // with the default maxDecimals (12), 2e-10 survives (see base cases);
+    it('should zero out a small number once maxDecimals is applied', () => {
+      // with no parameters 2e-10 survives untouched (see base cases);
       // with maxDecimals=5 it is below the resolution and collapses to 0
       const usecase = new FormatNumberUsecase(5);
       expect(usecase.execute(2e-10)).toBe('0');
@@ -65,10 +65,10 @@ describe('Format Number Usecase', () => {
       expect(usecase.execute(0.000123456)).toBe('0.00012');
     });
 
-    it('should preserve floating-point noise when maxDecimals is raised (atomic-scale mode)', () => {
-      // with the default maxDecimals (12) this value collapses to '0' (see base cases);
-      // raising maxDecimals lets it through, capped only by maxSignificantDigits
-      const usecase = new FormatNumberUsecase(20, 12);
+    it('should collapse floating-point noise with maxDecimals, capped by maxSignificantDigits', () => {
+      // with no parameters this value passes through untouched (see base cases);
+      // maxDecimals=20 keeps it, maxSignificantDigits=5 caps the digits shown
+      const usecase = new FormatNumberUsecase(20, 5);
       expect(usecase.execute(Math.sin(Math.PI))).toBe('1.2246e-16');
     });
   });

@@ -56,20 +56,24 @@ export function evaluateRpn(expression: string, variables?: Record<string, numbe
 }
 
 /**
- * Formats a number for display, rounding away floating-point noise
- * (`Math.sin(Math.PI)` → `0`) while keeping legitimately small or large
- * values readable. Purely a presentation helper: `evaluate()` and
- * `evaluateRpn()` never round — pass their result through this function
- * only when you are about to show it to a user.
+ * Formats a number for display. With no parameters it applies no rounding
+ * at all (`value.toString()`); passing `maxDecimals` and/or
+ * `maxSignificantDigits` opts into that specific rounding, e.g. collapsing
+ * floating-point noise (`Math.sin(Math.PI)` → `0` with `maxDecimals`) while
+ * keeping legitimately small or large values readable. Purely a
+ * presentation helper: `evaluate()` and `evaluateRpn()` never round — pass
+ * their result through this function only when you are about to show it to
+ * a user.
  *
  * @param value The number to format, typically the result of `evaluate()`.
- * @param maxDecimals Decimal places below which a value collapses to `0`.
- * @param maxSignificantDigits Significant digits kept in the output.
+ * @param maxDecimals Decimal places below which a value collapses to `0`. Omit to disable.
+ * @param maxSignificantDigits Significant digits kept in the output. Omit to disable.
  *
  * @example
- * formatNumber(Math.sin(Math.PI));  // '0'
- * formatNumber(2e-10);              // '2e-10'
- * formatNumber(Math.PI, 2);         // '3.14'
+ * formatNumber(Math.sin(Math.PI));      // '1.2246467991473532e-16'
+ * formatNumber(Math.sin(Math.PI), 12);  // '0'
+ * formatNumber(2e-10);                  // '2e-10'
+ * formatNumber(Math.PI, 2);             // '3.14'
  */
 export function formatNumber(value: number, maxDecimals?: number, maxSignificantDigits?: number): string {
   return new FormatNumberUsecase(maxDecimals, maxSignificantDigits).execute(value);

@@ -57,6 +57,11 @@ export interface OperatorEntityOptions {
    * Binding strength: higher binds tighter. References from the built-in
    * operators: `+`/`-` 10, `*`/`/` 20, prefix functions (`sin`, `sqrt`,
    * `max`) 85, unary `+`/`-` 90, `^` and `!` 95. Defaults to 1.
+   *
+   * Must stay within `[1, MAX_OPERATOR_PRECEDENCE]` (999): the RPN
+   * conversion emulates brackets by adding
+   * `MAX_OPERATOR_PRECEDENCE + 1` per nesting level, so a larger
+   * precedence would silently override bracket grouping.
    */
   precedence?: number;
   /** See {@link OperatorPosition}. Defaults to `INFIX`. */
@@ -90,7 +95,7 @@ export interface OperatorEntityOptions {
  * then collect operands until it finds the EOF sentinel that marks where
  * its argument list started.
  */
-export  class OperatorEntity implements TokenInterface {
+export class OperatorEntity implements TokenInterface {
   public readonly symbol: string;
   /** Arity. `0` means variadic: pop operands until the EOF sentinel. */
   protected numberOfOperands: number;

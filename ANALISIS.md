@@ -1,7 +1,8 @@
 # Análisis del proyecto — `@marckux/expression-evaluator`
 
 **Versión analizada:** 0.1.0 (previa a la primera publicación en npm)
-**Fecha:** 2026-07-06
+**Fecha:** 2026-07-06 · **Última revisión:** 2026-07-08 (variables, notación científica,
+separador `_`, `formatNumber` opt-in y métricas actualizadas)
 **Metodología:** lectura completa del código fuente, verificación empírica de casos límite
 contra la build de `dist/` (script reproducible), medición de cobertura y rendimiento, y
 comparativa con la competencia usando datos en vivo del registro de npm, bundlephobia y
@@ -12,8 +13,8 @@ avisos de seguridad públicos.
 ## 1. Resumen ejecutivo
 
 El proyecto está **listo para publicarse como 0.1.0**: hace bien lo que promete, tiene una
-cobertura de tests del ~98 %, cero dependencias, documentación JSDoc que viaja en los `.d.ts`
-y un tamaño de ~8 kB gzip. La arquitectura en dos capas (dominio puro + aplicación) es limpia
+cobertura de tests del ~99 %, cero dependencias, documentación JSDoc que viaja en los `.d.ts`
+y un tamaño de ~12 kB gzip. La arquitectura en dos capas (dominio puro + aplicación) es limpia
 y su punto fuerte real es la **extensibilidad**: la calculadora de demostración añadió 6
 operadores y una constante en ~100 líneas sin tocar la librería.
 
@@ -32,9 +33,10 @@ En cuanto al mercado: no competimos con mathjs (el "todo incluido" de 197 kB gzi
 nicho de evaluadores **pequeños, seguros y mantenidos**. Y ese nicho tiene hoy un vacío
 notable: `expr-eval`, la referencia histórica con 458 k descargas semanales, está abandonada
 desde 2019 y arrastra **dos CVEs de 2025 sin parche** (ejecución de código arbitrario y
-prototype pollution). Las carencias que nos separan de esa categoría son concretas: variables
-(`evaluate('2x+1', {x:3})`), una API `compile()` y más funciones integradas. Ese es el corazón
-del plan de mejoras (§8).
+prototype pollution). De las carencias que nos separaban de esa categoría, las **variables**
+(`evaluate('2x+1', {x:3})`) y la **notación científica** ya están implementadas (2026-07-07);
+quedan una API `compile()` y más funciones integradas. Ese es el corazón del plan de mejoras
+(§8).
 
 ---
 
@@ -44,9 +46,10 @@ del plan de mejoras (§8).
 
 | Export | Tipo | Función |
 | --- | --- | --- |
-| `evaluate(expr)` | función | Evalúa notación infija estándar. API principal. |
-| `evaluateRpn(expr)` | función | Evalúa notación polaca inversa (tokens separados por espacios). |
-| `EvaluateStandardExpressionUsecase`, `EvaluateRpnExpressionUsecase` | clases | Las mismas capacidades, instanciables/inyectables. |
+| `evaluate(expr, vars?)` | función | Evalúa notación infija estándar, con variables opcionales ligadas por llamada. API principal. |
+| `evaluateRpn(expr, vars?)` | función | Evalúa notación polaca inversa (tokens separados por espacios). |
+| `formatNumber(value, maxDecimals?, maxSigDigits?)` | función | Formateo de presentación, redondeo estrictamente opt-in (sin parámetros no redondea nada). |
+| `EvaluateStandardExpressionUsecase`, `EvaluateRpnExpressionUsecase`, `FormatNumberUsecase` | clases | Las mismas capacidades, instanciables/inyectables. |
 | `EvaluatorInterface` | interfaz | Contrato común para inyectar cualquiera de las dos. |
 | `InvalidExpressionError`, `ValueError` | errores | Tipados, capturables con `instanceof`. |
 | `OperatorEntity` (+ `Options`, `Position`, `Associativity`), `ConstantEntity`, `TokenInterface`, `TokenMapper` | extensión | Registro de operadores y constantes propios. |
@@ -58,14 +61,15 @@ del plan de mejoras (§8).
 | `+` `-` | 2 | 10 | INFIX | LEFT | — |
 | `*` | 2 | 20 | INFIX | LEFT | — |
 | `/` | 2 | 20 | INFIX | LEFT | división por 0 → `ValueError` |
-| `sin` `cos` `sqrt` | 1 | 85 | PREFIX | RIGHT | `sqrt`: negativo → `ValueError` |
+| `sin` `cos` `sqrt` `exp` | 1 | 85 | PREFIX | RIGHT | `sqrt`: negativo → `ValueError` |
 | `max` | variádica | 85 | PREFIX | RIGHT | ≥ 1 operando |
 | `pos` `neg` (los `+`/`-` unarios) | 1 | 90 | PREFIX | RIGHT | — |
 | `^` | 2 | 95 | INFIX | RIGHT | — |
 | `!` | 1 | 95 | POSTFIX | RIGHT | entero ≥ 0 |
 
-Constantes: `PI`, `E`. Controladores estructurales: `(`, `)`, `,`, `_EOF` (centinela interno
-de los variádicos). Las tres funciones prefijas (`sin`/`cos`/`sqrt`) comparten hoy
+Constantes: `PI` (no hay constante `E`: las letras `e`/`E` están reservadas para la notación
+exponencial de los literales, `2e5`; el número de Euler se obtiene con `exp(1)`).
+Controladores estructurales: `(`, `)`, `,`, `_EOF` (centinela interno de los variádicos). Las tres funciones prefijas (`sin`/`cos`/`sqrt`) comparten hoy
 `PREFIX`+`RIGHT` — la inconsistencia que señalaba una versión anterior de este análisis (§4.3)
 ya no existe en el código.
 
@@ -86,18 +90,22 @@ Todo lo siguiente se comprobó ejecutando contra `dist/` (no solo leyendo el có
 | `10 / 0`, `sqrt(-1)`, `(-3)!` | `ValueError` | Dominio validado (decisión de diseño: mathjs devolvería `Infinity` en `10/0`). |
 | `2PI`, `2(3+4)`, `(1+2)(3+4)`, `2 sin PI` | `6.28`, `14`, `21`, `2·sin(π)` | **Multiplicación implícita** (implementada 2026-07-07; spec completa en `implicit-multiplication.usecase.test.ts`). |
 | `2 3`, `PI2` | `InvalidExpressionError` | Dos números seguidos, o constante seguida de número, no son multiplicación implícita: "Missing operator between…". |
+| `2x + 1` con `{x: 3}` | `7` | **Variables** ligadas por llamada (implementadas 2026-07-07); participan en la multiplicación implícita como constantes con nombre. |
+| `1.5e3 + 2E2`, `1_523_245.45` | `1700`, `1523245.45` | **Notación científica** y **separador `_`** en literales (implementados 2026-07-07/08), con la misma semántica que los literales de JS. |
+| `sin(PI)` → `formatNumber` | `'1.22…e-16'` / `'0'` | `formatNumber` sin parámetros no redondea nada; `maxDecimals`/`maxSignificantDigits` son opt-in independientes (2026-07-08). |
 | `''`, `'   '` | `InvalidExpressionError` | Expresión vacía rechazada. |
 
 ### 2.4 Métricas de calidad y rendimiento
 
-- **Tests:** 7 suites, 32 tests, todos en verde. Cobertura: 100 % en `application/usecases`,
-  ~98,8 % en `domain/entities`, 96,7 % sentencias / 80 % ramas en `operators`. Huecos
-  concretos en §6.3.
-- **Rendimiento** (WSL2, Node local): ~55 000 evaluaciones/s del pipeline completo con
-  `3 + 4 * (2 - 1) - sin(PI / 2)`; una expresión de 8 000 términos se evalúa en 26 ms con
-  escalado aproximadamente lineal. Sobrado para su caso de uso (fórmulas de usuario).
-- **Tamaño:** tarball 18,0 kB; 68,4 kB desempaquetado; ~44 kB de JS que comprimen a
-  **~8 kB gzip** (sin minificar). Cero dependencias de runtime.
+- **Tests** (medido 2026-07-08): 12 suites, 165 tests, todos en verde. Cobertura global
+  98,8 % sentencias / 95,5 % ramas; 100 % en `application/usecases` y `mappers`; 98 % en
+  `operators`. Huecos concretos en §5.5.
+- **Rendimiento** (WSL2, Node local, medido 2026-07-06): ~55 000 evaluaciones/s del pipeline
+  completo con `3 + 4 * (2 - 1) - sin(PI / 2)`; una expresión de 8 000 términos se evalúa en
+  26 ms con escalado aproximadamente lineal. Sobrado para su caso de uso (fórmulas de
+  usuario).
+- **Tamaño** (medido 2026-07-08): tarball 26,5 kB; 94,8 kB desempaquetado; el JS compilado
+  comprime a **~12 kB gzip** (sin minificar). Cero dependencias de runtime.
 - **Seguridad:** no hay `eval`/`new Function`; el registro de tokens es un `Map` (inmune a
   lookups tipo `__proto__`/`constructor` que han comprometido a la competencia, §7); las
   regex del formateador son lineales (sin backtracking catastrófico → sin ReDoS).
@@ -172,10 +180,10 @@ La **dirección de dependencias es correcta**: `domain` no importa nada de `appl
    acoplamiento temporal frágil y obliga a que `precedence` sea público y mutable.
 4. **El formateador destruye las posiciones.** El enfoque regex-espacios-`split(' ')` es
    ingenioso y simple, pero pierde el offset original de cada token: los errores no pueden
-   señalar columna, y la tokenización no puede tratar `1e5` (notación científica). Un lexer
-   real de una pasada es la mejora arquitectónica que desbloquea ambas cosas. (La
-   multiplicación implícita, que antes figuraba aquí, se resolvió sin lexer: es un paso sobre
-   la lista de tokens, `manageImplicitMultiplication()`.)
+   señalar columna. Un lexer real de una pasada es la mejora arquitectónica que lo
+   desbloquea. (Las otras dos limitaciones que figuraban aquí se resolvieron sin lexer: la
+   multiplicación implícita es un paso sobre la lista de tokens, y la notación científica y
+   el separador `_` se capturan con alternativas previas en la propia regex del formateador.)
 5. **`PREFIX`/`INFIX` ahora sí se distinguen** — desde la multiplicación implícita, `position:
    PREFIX` tiene un efecto real: marca al operador como "puede empezar un operando" (se puede
    multiplicar implícitamente contra él: `2 sin PI`). `POSTFIX` marca el final de operando.
@@ -261,16 +269,19 @@ Se han añadido tests de regresión con varias combinaciones de funciones prefij
 (mismo tipo y mixtas, con y sin paréntesis) en
 `evaluate-standard-expression.usecase.test.ts`.
 
-### 4.4 Notación científica: error confuso — **gravedad baja**
+### 4.4 Notación científica: error confuso — **corregido (soportada desde 2026-07-07)**
 
 ```ts
-evaluate('1e5')       // → InvalidExpressionError: "e is not a valid operator or constant"
-evaluate('2.5e-3 + 1')// → ídem
+evaluate('1e5')        // antes → InvalidExpressionError culpando a una "e" fantasma
+evaluate('1e5')        // ahora → 100000 ✓
+evaluate('2.5e-3 + 1') // ahora → 1.0025 ✓
 ```
 
-El tokenizador separa `1e5` en `1`, `e`, `5` y el mensaje culpa a una `e` que el usuario no
-escribió (y que además colisiona con la constante de Euler `E`). O se soporta la notación
-científica (deseable) o al menos se mejora el mensaje.
+Se resolvió por la vía deseable: soportar la notación en el tokenizador (una alternativa
+previa en la regex del `FormatterUsecase` mantiene el literal como una sola pieza). Como
+consecuencia, `e`/`E` quedaron **reservadas**: la constante de Euler se eliminó
+(`exp(1)` la sustituye), `registerToken` rechaza registrar esos símbolos y los nombres de
+variable `e`/`E` se rechazan también. Documentado en README ("There is no E constant").
 
 ### 4.5 La coma no delimitaba los argumentos de los variádicos — **corregido**
 
@@ -315,9 +326,10 @@ tragaba los operandos sueltos) quedó resuelto por la multiplicación implícita
 
 ## 5. Mejoras de código propuestas (sin cambiar el API)
 
-1. **Corregir §4.2 y §4.4** — caben en una tarde y son compatibles hacia atrás (estrictamente:
-   convierten resultados incorrectos en errores, que es la dirección segura). §4.1, §4.3 y
-   §4.5 ya están corregidos.
+1. **Corregir §4.2** (validar el rango de precedencia en el constructor) — cabe en una tarde
+   y es compatible hacia atrás (convierte resultados incorrectos en errores, que es la
+   dirección segura). §4.1, §4.3, §4.4 y §4.5 ya están corregidos. El rango 1–999 ya está
+   documentado en README y JSDoc (2026-07-08); falta solo la validación en código.
 2. **Nombrar la constante mágica**: `const BRACKET_PRECEDENCE_STEP = 100` en el builder, con
    el comentario de la invariante.
 3. **Eliminar la mutación de precedencia**: calcular la precedencia efectiva (`prec + level`)
@@ -325,11 +337,18 @@ tragaba los operandos sueltos) quedó resuelto por la multiplicación implícita
    `setPrecedence` del API público de `OperatorEntity`.
 4. **`ControllerEntity` abstracta**; refactor cosmético del bucle pop/re-push de `toRpn()` a
    un `peek` explícito; unificar comillas/indentación (hay mezcla de 2 y 4 espacios).
-5. **Cerrar los huecos de cobertura** (los señala `jest --coverage`):
-   - la rama `validation` que **devuelve `false`** (operator.entity.ts:166) — todos los tests
-     actuales validan lanzando, ninguno devolviendo `false`;
-   - el operador `pos`: no existe ningún test que evalúe `+5`;
-   - el camino de éxito de `sqrt`: se testea `sqrt(-1)` pero ninguna evaluación correcta.
+5. **Cerrar los huecos de cobertura** (los señala `jest --coverage`; actualizado 2026-07-08):
+   - la rama `validation` que **devuelve `false`** (el `throw` genérico de
+     `operator.entity.ts`) — todos los tests actuales validan lanzando, ninguno devolviendo
+     `false`;
+   - el operador `pos`: sigue sin existir un test que evalúe `+5` (la `operation` de
+     `positive.operator.ts` nunca se ejecuta);
+   - la validación de factorial con no-entero (`factorial.operator.ts`): se testea el
+     negativo pero no `2.5!`;
+   - la función de conveniencia `formatNumber()` de `index.ts` (la clase que envuelve sí
+     está cubierta al 100 %);
+   - los mensajes por defecto de los errores (`new InvalidExpressionError()` sin argumento).
+   El camino de éxito de `sqrt` ya está cubierto.
 6. **Tooling**: ESLint + Prettier (hoy no hay lint) y **CI en GitHub Actions** (matriz Node
    18/20/22: test + build + coverage). El repo remoto ya existe; no hay `.github/`.
 7. **Tests basados en propiedades** (fast-check como devDependency): generar expresiones
@@ -343,21 +362,20 @@ tragaba los operandos sueltos) quedó resuelto por la multiplicación implícita
 ### P1 — Paridad básica con la categoría (alto valor / bajo esfuerzo)
 
 1. **Ampliar la biblioteca estándar**: `tan`, `ln`, `log`, `abs`, `min`, `floor`, `ceil`,
-   `round`, `exp` y `mod` (o `%`). La evidencia es interna: la calculadora de demostración
-   tuvo que definir 6 de ellos a mano. Con la infraestructura actual son ~10 ficheros
-   triviales + export.
-2. **Notación científica** en literales (`1e5`, `2.5e-3`).
+   `round` y `mod` (o `%`); `exp` ya se añadió al eliminar la constante `E`. La evidencia es
+   interna: la calculadora de demostración tuvo que definir 6 de ellos a mano. Con la
+   infraestructura actual son ~9 ficheros triviales + export.
+2. ~~Notación científica~~ — **hecha el 2026-07-07** (`1e5`, `2.5e-3`, con `e`/`E`
+   reservadas; ver §4.4). De propina, separador de miles `_` (`1_523_245.45`).
 3. **Mensajes de error con posición** aproximada del token conflictivo.
 
 ### P2 — Diferenciadores (el salto de calidad)
 
-4. **Variables/scope** — la funcionalidad más demandada de la categoría y nuestra mayor
-   carencia comparativa:
-   ```ts
-   evaluate('2 * x + 1', { x: 3 }); // 7
-   ```
-   Diseño posible sin tocar el singleton: el builder recibe un scope efímero y resuelve los
-   identificadores desconocidos contra él antes de consultar el `TokenMapper`.
+4. ~~Variables/scope~~ — **hecha el 2026-07-07**, con el diseño previsto (scope efímero por
+   llamada, sin tocar el singleton): `evaluate('2x + 1', { x: 3 })` → `7`, con
+   `VariableEntity` como subclase de `ConstantEntity` (participa en la multiplicación
+   implícita como constante con nombre), validación anticipada de colisiones y `e`/`E`
+   prohibidas como nombres. Documentada en README con su propia sección.
 5. **API `compile()`** — parsear una vez, evaluar N veces (lo ofrecen expr-eval y mathjs):
    ```ts
    const area = compile('PI * r ^ 2');
@@ -404,7 +422,7 @@ npm y bundlephobia.
 | **tinymath** 1.2.1 | 16 k | 2022 | 706 kB | 🔴 Deprecado (era de Elastic/Kibana). |
 | **fparser** 4.2 | 8,4 k | 2025-12 | 215 kB | ✅ Activo; nicho pequeño, API de fórmulas con variables. |
 | **@cortex-js/compute-engine** 0.68 | 205 k | 2026-07 | 52,8 MB | ✅ Muy activo; CAS completo con MathJSON. Peso pesado, otra categoría. |
-| **@marckux/expression-evaluator** 0.1.0 | — | (pendiente) | 18 kB tarball · ~8 kB gzip | Este proyecto. |
+| **@marckux/expression-evaluator** 0.1.0 | — | (pendiente) | 26,5 kB tarball · ~12 kB gzip | Este proyecto. |
 
 ### 7.1 Lectura del mercado
 
@@ -420,9 +438,12 @@ npm y bundlephobia.
     errores tipados, extensibilidad más expresiva que la de expr-eval (posición, asociatividad,
     variádicos, validación de dominio), soporte RPN (rareza en la categoría), sin las clases de
     vulnerabilidad que mataron a la competencia, y mantenimiento vivo.
-  - *En contra:* sin **variables/scope** ni **compile()** (lo ofrecen expr-eval, fparser y
-    mathjs y es el caso de uso número 1: fórmulas parametrizadas), biblioteca de funciones más
-    corta, sin comunidad ni track record (versión 0.1.0, 0 descargas), solo CommonJS.
+  - *A favor (desde 2026-07-07):* **variables/scope** ligadas por llamada — era la carencia
+    número 1 y ya no lo es —, notación científica y multiplicación implícita (esta última
+    no la tiene casi nadie en la categoría).
+  - *En contra:* sin **compile()** (lo ofrecen expr-eval, fparser y mathjs: parsear una vez,
+    evaluar N veces), biblioteca de funciones más corta, sin comunidad ni track record
+    (versión 0.1.0, 0 descargas), solo CommonJS.
 - **Posicionamiento propuesto:** "el sustituto moderno y seguro de expr-eval para TypeScript".
   Objetivo realista para el primer año: ser útil, correcto y estar impecablemente documentado;
   las descargas son consecuencia, no meta.
@@ -442,12 +463,10 @@ defectos conocidos son casos límite documentados aquí y ninguno compromete el 
 
 ### Fase 1 — 0.2.0 "Robustez" (1–2 sesiones)
 
-- Bug §4.4 (mensaje de `1e5`). §4.1 (RPN→NaN / paréntesis y comas en RPN), §4.3 (`sqrt`
-  encadenada) y §4.5 (la coma no delimitaba los argumentos de los variádicos) ya están
-  corregidos.
-- Validar `precedence ∈ [1, MAX_OPERATOR_PRECEDENCE]` en `OperatorEntity` (§4.2) y documentar
-  el rango en README/JSDoc.
-- Notación científica en el tokenizador.
+- §4.1 (RPN→NaN), §4.3 (`sqrt` encadenada), §4.4 (notación científica) y §4.5 (la coma no
+  delimitaba los argumentos de los variádicos) ya están corregidos.
+- Validar `precedence ∈ [1, MAX_OPERATOR_PRECEDENCE]` en `OperatorEntity` (§4.2) — el rango
+  ya está documentado en README/JSDoc (2026-07-08), falta la validación en código.
 - Tests de los huecos de cobertura (§5.5) + tests de regresión de cada bug.
 - ESLint + Prettier + GitHub Actions (test/build/coverage en Node 18/20/22).
 
@@ -457,7 +476,8 @@ silenciosos); CI en verde en el repo público.
 ### Fase 2 — 0.3.0 "Paridad y diferenciación" (2–4 sesiones)
 
 - Biblioteca estándar ampliada (§6.1).
-- **Variables/scope** y **`compile()`** (§6.4–6.5) — el salto de valor comparativo.
+- **`compile()`** (§6.5) — el salto de valor comparativo que queda (las variables, §6.4, ya
+  están hechas).
 - `defineOperator`/`defineConstant` sin subclases (§6.6).
 - Property-based testing con fast-check.
 - README: sección de comparativa/benchmark y "por qué no expr-eval".
@@ -492,10 +512,10 @@ ningún breaking change en los exports existentes.
 
 | Decisión | Estado actual | Recomendación |
 | --- | --- | --- |
-| `10 / 0` | `ValueError` | Mantener (es más útil para fórmulas de usuario que el `Infinity` de IEEE-754/mathjs), pero **documentarlo en el README** como decisión consciente. |
+| `10 / 0` | `ValueError` | Mantener (es más útil para fórmulas de usuario que el `Infinity` de IEEE-754/mathjs). ~~Documentarlo en README~~ — hecho el 2026-07-08 (sección "Design decisions"). |
 | Literal `Infinity` | Aceptado por accidente | Decidir en fase 1: o documentar como feature o rechazar. |
 | Singleton `TokenMapper` | API pública | No romper: fachada sobre instancias en fase 3. |
-| Rango de precedencias | Implícito (≤ 99) | Hacerlo explícito ya (validación + docs), fase 1. |
+| Rango de precedencias | Documentado (1–999, README + JSDoc, 2026-07-08) | Falta la validación en el constructor, fase 1. |
 | Nombre scoped `@marckux/…` | — | Mantener. Menor descubribilidad que un nombre plano, pero evita colisiones y el squatting; la descubribilidad se gana con README y keywords. |
 | Solo CommonJS | `module: commonjs` | Suficiente para 0.x (Node y todos los bundlers lo consumen); dual ESM/CJS en 1.0. |
 
