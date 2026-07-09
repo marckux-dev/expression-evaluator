@@ -119,12 +119,38 @@ describe('Formatter Use Case', () => {
       expect(formatter.execute('123 + 45.6')).toBe('123 + 45.6');
     });
 
-    it('should split a double underscore into separate unrecognizable pieces, not silently misparse', () => {
-      expect(formatter.execute('1__000')).toBe('1 __ 000');
+    it('should leave a double underscore as one unrecognizable piece, not silently misparse', () => {
+      // '__' matches neither the number rules nor the word rule (a word
+      // needs a letter), so the piece stays glued and the tokenizer
+      // rejects it as an unknown symbol instead of reading 1000
+      expect(formatter.execute('1__000')).toBe('1__000');
     });
 
-    it('should split a trailing underscore into separate unrecognizable pieces, not silently misparse', () => {
-      expect(formatter.execute('12_')).toBe('12 _');
+    it('should leave a trailing underscore as one unrecognizable piece, not silently misparse', () => {
+      expect(formatter.execute('12_')).toBe('12_');
+    });
+  });
+
+  describe('identifier shapes (VARIABLE_NAME_PATTERN)', () => {
+    const formatter = new FormatterUsecase();
+
+    it('should keep an identifier with a numeric suffix as one word', () => {
+      expect(formatter.execute('x_12 + 1')).toBe('x_12 + 1');
+      expect(formatter.execute('_abc_123')).toBe('_abc_123');
+    });
+
+    it('should keep a $-prefixed identifier as one word', () => {
+      expect(formatter.execute('$x + $y_2')).toBe('$x + $y_2');
+    });
+
+    it('should separate a coefficient from an identifier (implicit multiplication)', () => {
+      expect(formatter.execute('5x_1')).toBe('5 x_1');
+      expect(formatter.execute('2$r')).toBe('2 $r');
+    });
+
+    it('should split a digit glued after an identifier: a coefficient goes before, never after', () => {
+      expect(formatter.execute('x2')).toBe('x 2');
+      expect(formatter.execute('x_1_2')).toBe('x_1 _2');
     });
   });
 });

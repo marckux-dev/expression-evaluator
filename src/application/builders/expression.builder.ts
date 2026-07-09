@@ -3,6 +3,7 @@ import {
   ExpressionEntity,
   TokenInterface,
   VariableEntity,
+  VARIABLE_NAME_PATTERN,
 } from '../../domain/entities';
 import { FormatterUsecase } from '../usecases/formatter.usecase';
 import { TokenMapper } from '../mappers';
@@ -28,7 +29,7 @@ export class ExpressionBuilder {
    */
   constructor(
     private expression: string,
-    private variables: Record<string, number> = {}
+    private variables: Record<string, number> = {},
   ) {
     ExpressionBuilder.validateVariablesCollision(variables);
     this.expression = expression;
@@ -40,15 +41,16 @@ export class ExpressionBuilder {
   }
 
   /**
-   * Rejects variable names that collide with a symbol registered in the
-   * {@link TokenMapper}, or with the reserved exponent letters `e`/`E`
+   * Rejects variable names that are not shaped like an identifier
+   * ({@link VARIABLE_NAME_PATTERN}), collide with a symbol registered in
+   * the {@link TokenMapper}, or are the reserved exponent letters `e`/`E`
    * (part of numeric literals like `2e5`). The whole mapping is checked,
-   * even names the expression never uses: a collision is a programming
-   * error worth failing fast on.
+   * even names the expression never uses: a bad name would otherwise
+   * never match any token and be ignored silently.
    *
-   * @throws {InvalidExpressionError} if there is a collision.
+   * @throws {InvalidExpressionError} if a name is invalid or collides.
    */
-  private static validateVariablesCollision(
+  public static validateVariablesCollision(
     variables: Record<string, number>
   ): void {
     const variablesNames: string[] = Object.keys(variables);
@@ -57,11 +59,26 @@ export class ExpressionBuilder {
         throw new InvalidExpressionError(
           `Variable "${v}" is not allowed: "e" and "E" are part of the numeric exponent notation (2e5).`
         );
+      ExpressionBuilder.validateVariableName(v);
       if (TokenMapper.getInstance().has(v))
         throw new InvalidExpressionError(
           `Variable "${v}" collides with an existing operator or constant.`
         );
     });
+  }
+
+  /**
+   * Rejects a name that does not match {@link VARIABLE_NAME_PATTERN}: an
+   * optional leading `_` or `$`, at least one letter, and an optional
+   * `_`-separated numeric suffix (`x`, `_x`, `$x`, `x_12`, `_abc_123`).
+   *
+   * @throws {InvalidExpressionError} if the variable name is invalid.
+   */
+  private static validateVariableName(variableName: string): void {
+    if (!VARIABLE_NAME_PATTERN.test(variableName))
+      throw new InvalidExpressionError(
+        `"${variableName}" is not a valid variable name: an optional leading "_" or "$", letters, and an optional "_"-separated numeric suffix (like "x_2").`
+      );
   }
 
   /**
@@ -82,11 +99,14 @@ export class ExpressionBuilder {
   /**
    * Resolves one string piece to a token: a numeric literal becomes a
    * {@link ConstantEntity}, a name present in the variables mapping becomes
-   * a {@link VariableEntity} (already carrying its value), and anything
-   * else is looked up in the {@link TokenMapper}.
+   * a bound {@link VariableEntity}, a registered symbol is looked up in the
+   * {@link TokenMapper}, and any other identifier-shaped word becomes an
+   * **unbound** {@link VariableEntity} — to be given a value later through
+   * `ExpressionEntity.bind()` (this is what `compile()` relies on).
    *
-   * @throws {InvalidExpressionError} if the symbol is not a number, a
-   *   provided variable, or a registered token.
+   * @throws {InvalidExpressionError} if the symbol is none of the above:
+   *   not a number, not registered, and not shaped like a variable name
+   *   (including the reserved `e`/`E`, which never become variables).
    */
   private resolveSymbol(symbol: string): TokenInterface {
     if (!isNaN(Number(symbol))) {
@@ -94,7 +114,15 @@ export class ExpressionBuilder {
     } else if (Object.prototype.hasOwnProperty.call(this.variables, symbol)) {
       return new VariableEntity(symbol, Number(this.variables[symbol]));
     } else {
-      return TokenMapper.getInstance().getToken(symbol);
+      try {
+        return TokenMapper.getInstance().getToken(symbol);
+      } catch (error) {
+        // e/E are reserved for the exponent notation: keep the original
+        // "not a valid operator" error instead of turning them into variables
+        if (symbol === 'e' || symbol === 'E') throw error;
+        ExpressionBuilder.validateVariableName(symbol);
+        return new VariableEntity(symbol);
+      }
     }
   }
 

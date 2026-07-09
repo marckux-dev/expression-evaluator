@@ -69,16 +69,35 @@ describe('expression.builder.ts', () => {
       expect((tokens[4] as VariableEntity).getValue()).toBe(5);
     });
 
-    it('should throw InvalidExpressionError for a symbol that is not a number, known token or provided variable', () => {
-      expect(() => new ExpressionBuilder('foo').tokenize()).toThrow(InvalidExpressionError);
+    it('should defer an unknown identifier as an unbound VariableEntity instead of throwing', () => {
+      const tokens = new ExpressionBuilder('foo').tokenize().getTokens();
+      expect(tokens).toHaveLength(1);
+      expect(tokens[0]).toBeInstanceOf(VariableEntity);
+      expect((tokens[0] as VariableEntity).isBound()).toBe(false);
     });
 
-    it('should throw InvalidExpressionError when the expression references a variable missing from the record', () => {
-      expect(() => new ExpressionBuilder('x + 1', { y: 2 }).tokenize()).toThrow(InvalidExpressionError);
+    it('should throw InvalidExpressionError at tokenize for a symbol that is not even identifier-shaped', () => {
+      expect(() => new ExpressionBuilder('3 # 4').tokenize()).toThrow(InvalidExpressionError);
+      expect(() => new ExpressionBuilder('x_ + 1').tokenize()).toThrow(InvalidExpressionError);
+    });
+
+    it('should keep e/E reserved: they never become variables', () => {
+      expect(() => new ExpressionBuilder('e + 1').tokenize()).toThrow(InvalidExpressionError);
+      expect(() => new ExpressionBuilder('E + 1').tokenize()).toThrow(InvalidExpressionError);
+    });
+
+    it('should defer a variable missing from the record: the error surfaces at evaluation, naming it', () => {
+      const entity = new ExpressionBuilder('x 1 +', { y: 2 }).tokenize().build();
+      expect(() => entity.getValue()).toThrow(InvalidExpressionError);
+      expect(() => entity.getValue()).toThrow(/x/);
     });
 
     it('should not resolve an unset variable using inherited Object.prototype properties', () => {
-      expect(() => new ExpressionBuilder('toString').tokenize()).toThrow(InvalidExpressionError);
+      // 'toString' must become an unbound variable (failing at evaluation),
+      // never be resolved to the Object.prototype function
+      const entity = new ExpressionBuilder('toString').tokenize().build();
+      expect(() => entity.getValue()).toThrow(InvalidExpressionError);
+      expect(() => entity.getValue()).toThrow(/toString/);
     });
   });
 

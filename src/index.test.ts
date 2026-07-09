@@ -1,5 +1,5 @@
-import { evaluate, evaluateRpn } from './index';
-import { InvalidExpressionError } from './domain/entities/errors';
+import { evaluate, evaluateRpn, compile } from './index';
+import { InvalidExpressionError, ValueError } from './domain/entities/errors';
 
 describe('evaluate() with variables', () => {
   it('should substitute a single variable', () => {
@@ -241,5 +241,60 @@ describe('reserved exponent letters e/E', () => {
 
   it('should still accept other single-letter variable names', () => {
     expect(evaluate('a + b', { a: 1, b: 2 })).toBe(3);
+  });
+});
+
+describe('compile()', () => {
+  it('should return a reusable function evaluated with different values', () => {
+    const p = compile('x ^ 2 + y ^ 2');
+    expect(p({ x: 3, y: 4 })).toBe(25);
+    expect(p({ x: 5, y: 12 })).toBe(169);
+    expect(p({ x: 0, y: 0 })).toBe(0);
+  });
+
+  it('should evaluate a constant expression with no variables', () => {
+    const c = compile('2 + 3 * 5');
+    expect(c()).toBe(17);
+    expect(c({})).toBe(17);
+  });
+
+  it('should give the same result as the equivalent evaluate() call', () => {
+    expect(compile('x + y * 2')({ x: 1, y: 5 })).toBe(evaluate('x + y * 2', { x: 1, y: 5 }));
+    expect(compile('PI * r ^ 2')({ r: 2 })).toBe(evaluate('PI * r ^ 2', { r: 2 }));
+  });
+
+  it('should support implicit multiplication, functions and constants', () => {
+    expect(compile('2x')({ x: 3 })).toBe(6);
+    expect(compile('sin(x) + max(y, 1)')({ x: 0, y: 5 })).toBe(5);
+    expect(compile('x PI')({ x: 2 })).toBeCloseTo(2 * Math.PI, 10);
+  });
+
+  it('should parse eagerly: a malformed expression throws at compile time', () => {
+    expect(() => compile('3 + 4)')).toThrow(InvalidExpressionError);
+    expect(() => compile('')).toThrow(InvalidExpressionError);
+    expect(() => compile('e + 1')).toThrow(InvalidExpressionError);
+  });
+
+  it('should not need variable values until it is called', () => {
+    const f = compile('x + y'); // compiles fine with free variables
+    expect(() => f({ x: 1 })).toThrow(InvalidExpressionError); // missing y at call time
+    expect(() => f({ x: 1 })).toThrow(/y/);
+    expect(f({ x: 1, y: 2 })).toBe(3);
+  });
+
+  it('should reject colliding or malformed variable names at call time', () => {
+    expect(() => compile('x + 1')({ PI: 5 })).toThrow(InvalidExpressionError);
+    expect(() => compile('x + 1')({ x2: 5 })).toThrow(InvalidExpressionError);
+  });
+
+  it('should throw ValueError for out-of-domain operands when called', () => {
+    expect(() => compile('x / 0')({ x: 1 })).toThrow(ValueError);
+    expect(() => compile('sqrt(x)')({ x: -1 })).toThrow(ValueError);
+  });
+
+  it('should not carry state between calls', () => {
+    const f = compile('x + 1');
+    f({ x: 100 });
+    expect(f({ x: 1 })).toBe(2);
   });
 });

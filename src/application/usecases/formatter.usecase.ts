@@ -15,13 +15,18 @@
  * requires an underscore between digits, so it never touches identifiers
  * (`_tmp`) or a plain leading-dot decimal (`.5`), and combining it with
  * scientific notation (`1_000e2`) is not supported.
+ *
+ * Words follow the identifier shape of {@link VARIABLE_NAME_PATTERN}
+ * (unanchored here): an optional leading `_`/`$`, letters, and an optional
+ * `_`-separated numeric suffix. `x_12` is one word; `x2` splits into
+ * `x 2` (a coefficient goes before, never after).
  */
 export class FormatterUsecase {
 
   execute(expression: string): string {
-    // one pass, first match wins: underscore-grouped number | scientific literal | symbol | word
+    // one pass, first match wins: underscore-grouped number | scientific literal | word | symbol
     expression = expression.replace(
-      /(\d+(?:_\d+)+(?:\.\d+(?:_\d+)*)?|\d+\.\d+(?:_\d+)+)|(\d+(?:\.\d+)?[eE][+-]?\d+)|([^a-zA-Z0-9._\s])|([a-zA-Z_]+)/g,
+      /(\d+(?:_\d+)+(?:\.\d+(?:_\d+)*)?|\d+\.\d+(?:_\d+)+)|(\d+(?:\.\d+)?[eE][+-]?\d+)|([$_]?[a-zA-Z]+(?:_[0-9]+)?)|([^a-zA-Z0-9._\s])/g,
       (match, groupedNumber) => groupedNumber ? ` ${groupedNumber.replace(/_/g, '')} ` : ` ${match} `
     );
     // trim the expression

@@ -9,13 +9,17 @@
 operators in a few lines.**
 
 ```ts
-import { evaluate } from '@marckux/expression-evaluator';
+import { evaluate, compile } from '@marckux/expression-evaluator';
 
 evaluate('3 + 4 * (2 - 1)');             // 7
 evaluate('2PI');                         // 6.283… — implicit multiplication
 evaluate('sin(PI / 2) + max(1, 5)');     // 6
 evaluate('(x + y) ^ 2', { x: 1, y: 2 }); // 9 — variables, bound per call
 evaluate('5!');                          // 120
+
+const p = compile('x ^ 2 + y ^ 2');      // parse once…
+p({ x: 3, y: 4 });                       // 25 — …evaluate many
+p({ x: 5, y: 12 });                      // 169
 ```
 
 No `eval()`, no `new Function()`, no dependencies — just a small, strict-TypeScript
@@ -27,8 +31,11 @@ Evaluating user-written formulas (form fields, configurable pricing rules, sprea
 inputs…) with `eval()` is a security hole, and pulling in a full computer-algebra system is
 usually overkill. This package sits in the middle:
 
-- **Zero runtime dependencies**, ~12 kB gzip. [mathjs](https://mathjs.org/) is a superb
+- **Zero runtime dependencies**, ~14 kB gzip. [mathjs](https://mathjs.org/) is a superb
   toolbox, but its parser comes with ~200 kB of universe you may not need.
+- **`compile()` — parse once, evaluate many.** The same formula evaluated against thousands
+  of variable sets (a plotted curve, a pricing rule, a spreadsheet column) pays the parsing
+  cost a single time.
 - **Actively maintained and structurally safe.** The historical lightweight option,
   `expr-eval`, has been unmaintained since 2019 and carries unpatched CVEs. Here the token
   registry is a real `Map` (no prototype-pollution lookups) and nothing ever compiles
@@ -67,15 +74,39 @@ evaluate('exp 1');                    // 2.718… — e^x; there is no E constan
 
 ### Built-in tokens
 
+Operators, by precedence (higher binds tighter):
+
 | Token | Meaning | Precedence | Notes |
 | --- | --- | --- | --- |
 | `+` `-` | add, subtract | 10 | also unary (`-3`, `+3`), then precedence 90 |
-| `*` `/` | multiply, divide | 20 | `10/0` throws `ValueError` (see design notes) |
-| `sin` `cos` `sqrt` `exp` | prefix functions | 85 | parentheses optional: `sin PI` |
-| `max(…)` | variadic maximum | 85 | any number of comma-separated arguments |
+| `*` `/` `mod` | multiply, divide, remainder | 20 | `10/0` and `x mod 0` throw `ValueError` |
+| `nCr` `nPr` | combinations, permutations | 30 | infix, as on scientific calculators: `5 nCr 2` = 10 |
+| prefix functions | see below | 85 | parentheses optional for one argument: `sin PI` |
 | `^` | power | 95 | right-associative: `2^3^2` = `512` |
 | `!` | factorial | 95 | postfix; non-negative integers only |
-| `PI` | π | — | see design notes about `E` |
+
+Prefix functions (all precedence 85), by field:
+
+| Field | Functions |
+| --- | --- |
+| Arithmetic | `abs`, `floor`, `ceil`, `round`, `trunc`, `sign`, `sqrt`, `cbrt`, `exp`, `ln`, `log` (base 10), `gcd(a, b)`, `lcm(a, b)` |
+| Trigonometry | `sin`, `cos`, `tan`, `asin`, `acos`, `atan` (radians); `deg(x)`/`rad(x)` to convert — `sin(rad(90))` = 1 |
+| Hyperbolic | `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh` |
+| Statistics (variadic) | `max(…)`, `min(…)`, `sum(…)`, `prod(…)`, `mean(…)`, `median(…)`, `stdev(…)` (sample, n−1), `stdevp(…)` (population) |
+| Probability | `rand()` — uniform in [0, 1) |
+| Financial | `fv(rate, n, pv)`, `pv(rate, n, fv)`, `pmt(rate, n, principal)` — per-period fractional rate (5% = 0.05) |
+
+Constants: `PI` (see the design notes about `E`). Out-of-domain arguments (`ln(0)`,
+`asin(2)`, `2 nCr 5`, a non-integer number of periods…) throw `ValueError` with a specific
+message.
+
+```ts
+evaluate('gcd(12, 18)');                 // 6
+evaluate('52 nCr 5');                    // 2598960 — poker hands
+evaluate('mean(2, 4, 6) + stdev(1, 5)'); // 6.828…
+evaluate('floor(rand() * 6) + 1');       // a die roll
+evaluate('pmt(0.05/12, 360, 200_000)');  // 1073.64… — monthly mortgage payment
+```
 
 ### Implicit multiplication
 
@@ -117,26 +148,64 @@ evaluate('(x + y) * 2', { x: 1, y: 2 });   // 6
 evaluate('max(x, y, 1)', { x: -2, y: 5 }); // 5
 ```
 
-Variable names are letter/underscore sequences (`x`, `radio`, `_tmp`). In implicit
-multiplication they behave like named constants (`PI`): a coefficient goes before, never
-after.
+A variable name is an optional leading `_` or `$`, one or more letters, and an optional
+numeric suffix separated by `_`:
+
+| Valid | Invalid |
+| --- | --- |
+| `x`, `radio`, `_tmp`, `$price`, `x_1`, `$x_12` | `x1` (digits need the `_`), `x_` (dangling `_`), `foo_bar` (`_` only introduces digits), `e`/`E` (reserved for `2e5`) |
+
+In implicit multiplication variables behave like named constants (`PI`): a coefficient goes
+before, never after.
 
 ```ts
 evaluate('2x', { x: 3 });          // 6      = 2 * x
 evaluate('x y', { x: 3, y: 4 });   // 12     = x * y
 evaluate('x(2+3)', { x: 2 });      // 10     = x * (2+3)
+evaluate('2 x_1', { x_1: 5 });     // 10     = 2 * x_1
 evaluate('x2', { x: 3 });          // throws: missing operator between x and 2
 ```
 
 Two rules, both throwing `InvalidExpressionError`:
 
-- Every variable used in the expression must be present in the object; otherwise it is just
-  an unknown symbol.
-- A variable name must not collide with a registered operator or constant (`PI`, `sin`…),
-  and `e`/`E` are always rejected — they are part of the numeric exponent notation (`2e5`).
-  The whole object is validated up front, even for names the expression never uses. To stay
-  clear of any built-in — present or future — prefix your variables with `_` or another
-  reserved character of your choice.
+- Every variable used in the expression must have a value: an identifier the evaluator does
+  not recognize is treated as a variable, and if no value reaches it the evaluation fails
+  naming it (`The variable "x" has no value`). Note this includes typos: `sen(x)` fails as
+  an unvalued variable `sen`, not as a syntax error.
+- A supplied name must be a valid variable name and must not collide with a registered
+  operator or constant (`PI`, `sin`…); `e`/`E` are always rejected — they are part of the
+  numeric exponent notation (`2e5`). The whole object is validated up front, even for names
+  the expression never uses. To stay clear of any built-in — present or future — prefix your
+  variables with `_` or `$`.
+
+### Compile once, evaluate many
+
+When the same formula runs repeatedly with different values, `compile()` pays the parsing
+cost (tokenizing, implicit multiplication, RPN conversion) a single time and returns a
+plain function you call with the values:
+
+```ts
+import { compile } from '@marckux/expression-evaluator';
+
+const area = compile('PI * r ^ 2');
+area({ r: 1 });  // 3.141…
+area({ r: 2 });  // 12.566…
+
+const dist = compile('sqrt(x ^ 2 + y ^ 2)');
+points.map(({ x, y }) => dist({ x, y }));
+```
+
+Compilation is eager and calls are stateless:
+
+- A malformed expression throws `InvalidExpressionError` from `compile()` itself — you
+  find out immediately, not on the first call.
+- Free variables need no values at compile time; a value missing **at call time** throws
+  naming the variable, and each call binds its own values (nothing leaks between calls).
+- `compile(expr)(values)` is exactly equivalent to `evaluate(expr, values)` — same
+  pipeline, different moment of binding.
+
+The `CompiledExpression` type and the `CompileStandardExpressionUsecase` class are exported
+for dependency injection and typing.
 
 ### Reverse Polish notation
 
@@ -248,6 +317,11 @@ Deliberate choices you might otherwise report as bugs:
 - **Unclosed opening brackets are forgiven**: `3-(2*(3+4` evaluates as `3-(2*(3+4))` = -11,
   the standard shunting-yard behaviour (and what most calculators do). An *extra closing*
   bracket is always an error.
+- **Unknown identifiers are unbound variables, not syntax errors.** Anything shaped like a
+  variable name is deferred until evaluation and fails then, naming itself (`The variable
+  "sen" has no value`). This is what makes `compile()` work with free variables; the trade-off
+  is that a typo surfaces at call time instead of parse time. Symbols that are *not* shaped
+  like a name (`#`, `x_`) still fail at parse time.
 - **Evaluation never rounds.** Results are raw doubles; presentation belongs to
   `formatNumber()`, which is strictly opt-in.
 
@@ -255,12 +329,12 @@ Deliberate choices you might otherwise report as bugs:
 
 ```bash
 npm install
-npm test               # jest — 165 tests
+npm test               # jest — 286 tests
 npm run test:coverage  # ~99% statement coverage
 npm run build          # compiles to dist/ with type declarations
 ```
 
-The source is ~1 300 lines of strict TypeScript in two layers (pure domain + application
+The source is ~1 400 lines of strict TypeScript in two layers (pure domain + application
 pipeline) — small enough to read in one sitting.
 
 ## License

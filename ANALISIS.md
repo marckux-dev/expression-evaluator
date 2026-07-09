@@ -1,8 +1,10 @@
 # Análisis del proyecto — `@marckux/expression-evaluator`
 
 **Versión analizada:** 0.1.0 (previa a la primera publicación en npm)
-**Fecha:** 2026-07-06 · **Última revisión:** 2026-07-08 (variables, notación científica,
-separador `_`, `formatNumber` opt-in y métricas actualizadas)
+**Fecha:** 2026-07-06 · **Última revisión:** 2026-07-09 (`compile()` —parsear una vez,
+evaluar N veces—, variables no ligadas con resolución diferida, patrón formal de nombres de
+variable, y métricas actualizadas; antes: variables, notación científica, separador `_`,
+`formatNumber` opt-in)
 **Metodología:** lectura completa del código fuente, verificación empírica de casos límite
 contra la build de `dist/` (script reproducible), medición de cobertura y rendimiento, y
 comparativa con la competencia usando datos en vivo del registro de npm, bundlephobia y
@@ -14,7 +16,7 @@ avisos de seguridad públicos.
 
 El proyecto está **listo para publicarse como 0.1.0**: hace bien lo que promete, tiene una
 cobertura de tests del ~99 %, cero dependencias, documentación JSDoc que viaja en los `.d.ts`
-y un tamaño de ~12 kB gzip. La arquitectura en dos capas (dominio puro + aplicación) es limpia
+y un tamaño de ~14 kB gzip. La arquitectura en dos capas (dominio puro + aplicación) es limpia
 y su punto fuerte real es la **extensibilidad**: la calculadora de demostración añadió 6
 operadores y una constante en ~100 líneas sin tocar la librería.
 
@@ -33,10 +35,11 @@ En cuanto al mercado: no competimos con mathjs (el "todo incluido" de 197 kB gzi
 nicho de evaluadores **pequeños, seguros y mantenidos**. Y ese nicho tiene hoy un vacío
 notable: `expr-eval`, la referencia histórica con 458 k descargas semanales, está abandonada
 desde 2019 y arrastra **dos CVEs de 2025 sin parche** (ejecución de código arbitrario y
-prototype pollution). De las carencias que nos separaban de esa categoría, las **variables**
-(`evaluate('2x+1', {x:3})`) y la **notación científica** ya están implementadas (2026-07-07);
-quedan una API `compile()` y más funciones integradas. Ese es el corazón del plan de mejoras
-(§8).
+prototype pollution). Las carencias que nos separaban de esa categoría están cerradas: las
+**variables** (`evaluate('2x+1', {x:3})`) y la **notación científica** desde el 2026-07-07,
+y la API **`compile()`** ("parsear una vez, evaluar N veces") desde el 2026-07-09. Queda una
+sola de segundo orden: ampliar la biblioteca de funciones integradas (§6.1). El plan de
+mejoras (§8) refleja el nuevo estado.
 
 ---
 
@@ -48,8 +51,10 @@ quedan una API `compile()` y más funciones integradas. Ese es el corazón del p
 | --- | --- | --- |
 | `evaluate(expr, vars?)` | función | Evalúa notación infija estándar, con variables opcionales ligadas por llamada. API principal. |
 | `evaluateRpn(expr, vars?)` | función | Evalúa notación polaca inversa (tokens separados por espacios). |
+| `compile(expr)` | función | Parsea una vez y devuelve `(vars?) => number` reutilizable — parseo anticipado, ligado de valores por invocación. |
 | `formatNumber(value, maxDecimals?, maxSigDigits?)` | función | Formateo de presentación, redondeo estrictamente opt-in (sin parámetros no redondea nada). |
-| `EvaluateStandardExpressionUsecase`, `EvaluateRpnExpressionUsecase`, `FormatNumberUsecase` | clases | Las mismas capacidades, instanciables/inyectables. |
+| `CompiledExpression` | tipo | La firma de la función que devuelve `compile()`. |
+| `EvaluateStandardExpressionUsecase`, `EvaluateRpnExpressionUsecase`, `CompileStandardExpressionUsecase`, `FormatNumberUsecase` | clases | Las mismas capacidades, instanciables/inyectables. |
 | `EvaluatorInterface` | interfaz | Contrato común para inyectar cualquiera de las dos. |
 | `InvalidExpressionError`, `ValueError` | errores | Tipados, capturables con `instanceof`. |
 | `OperatorEntity` (+ `Options`, `Position`, `Associativity`), `ConstantEntity`, `TokenInterface`, `TokenMapper` | extensión | Registro de operadores y constantes propios. |
@@ -90,22 +95,24 @@ Todo lo siguiente se comprobó ejecutando contra `dist/` (no solo leyendo el có
 | `10 / 0`, `sqrt(-1)`, `(-3)!` | `ValueError` | Dominio validado (decisión de diseño: mathjs devolvería `Infinity` en `10/0`). |
 | `2PI`, `2(3+4)`, `(1+2)(3+4)`, `2 sin PI` | `6.28`, `14`, `21`, `2·sin(π)` | **Multiplicación implícita** (implementada 2026-07-07; spec completa en `implicit-multiplication.usecase.test.ts`). |
 | `2 3`, `PI2` | `InvalidExpressionError` | Dos números seguidos, o constante seguida de número, no son multiplicación implícita: "Missing operator between…". |
-| `2x + 1` con `{x: 3}` | `7` | **Variables** ligadas por llamada (implementadas 2026-07-07); participan en la multiplicación implícita como constantes con nombre. |
+| `2x + 1` con `{x: 3}` | `7` | **Variables** ligadas por llamada (implementadas 2026-07-07); participan en la multiplicación implícita como constantes con nombre. Nombres: `[_$]?letras(_dígitos)?` — `x_2` y `$x` válidos, `x2` y `foo_bar` no (`VARIABLE_NAME_PATTERN`, 2026-07-09). |
+| `compile('x^2+y^2')` → `f({x:3,y:4})` | `25` | **`compile()`** (2026-07-09): el RPN se construye una vez; cada invocación liga valores sobre copias inmutables. `compile(e)(v) ≡ evaluate(e, v)`. |
+| `evaluate('sen(1)')` | `InvalidExpressionError` al evaluar | Identificador desconocido = variable **no ligada** (resolución diferida, 2026-07-09): el error sale en evaluación nombrándola, no en el parseo. Los símbolos sin forma de nombre (`#`, `x_`) sí fallan al parsear. |
 | `1.5e3 + 2E2`, `1_523_245.45` | `1700`, `1523245.45` | **Notación científica** y **separador `_`** en literales (implementados 2026-07-07/08), con la misma semántica que los literales de JS. |
 | `sin(PI)` → `formatNumber` | `'1.22…e-16'` / `'0'` | `formatNumber` sin parámetros no redondea nada; `maxDecimals`/`maxSignificantDigits` son opt-in independientes (2026-07-08). |
 | `''`, `'   '` | `InvalidExpressionError` | Expresión vacía rechazada. |
 
 ### 2.4 Métricas de calidad y rendimiento
 
-- **Tests** (medido 2026-07-08): 12 suites, 165 tests, todos en verde. Cobertura global
-  98,8 % sentencias / 95,5 % ramas; 100 % en `application/usecases` y `mappers`; 98 % en
-  `operators`. Huecos concretos en §5.5.
+- **Tests** (medido 2026-07-09): 15 suites, 286 tests, todos en verde (incluye la spec de
+  integración de la biblioteca estándar de 25 operadores). Huecos previos concretos en §5.5.
 - **Rendimiento** (WSL2, Node local, medido 2026-07-06): ~55 000 evaluaciones/s del pipeline
   completo con `3 + 4 * (2 - 1) - sin(PI / 2)`; una expresión de 8 000 términos se evalúa en
   26 ms con escalado aproximadamente lineal. Sobrado para su caso de uso (fórmulas de
-  usuario).
-- **Tamaño** (medido 2026-07-08): tarball 26,5 kB; 94,8 kB desempaquetado; el JS compilado
-  comprime a **~12 kB gzip** (sin minificar). Cero dependencias de runtime.
+  usuario). Con `compile()`, además, el coste de parseo se paga una sola vez por fórmula.
+- **Tamaño** (medido 2026-07-09, con la biblioteca estándar ampliada): tarball 39,5 kB;
+  151 kB desempaquetado; el JS compilado comprime a **~18 kB gzip** (sin minificar). Cero
+  dependencias de runtime.
 - **Seguridad:** no hay `eval`/`new Function`; el registro de tokens es un `Map` (inmune a
   lookups tipo `__proto__`/`constructor` que han comprometido a la competencia, §7); las
   regex del formateador son lineales (sin backtracking catastrófico → sin ReDoS).
@@ -361,10 +368,13 @@ tragaba los operandos sueltos) quedó resuelto por la multiplicación implícita
 
 ### P1 — Paridad básica con la categoría (alto valor / bajo esfuerzo)
 
-1. **Ampliar la biblioteca estándar**: `tan`, `ln`, `log`, `abs`, `min`, `floor`, `ceil`,
-   `round` y `mod` (o `%`); `exp` ya se añadió al eliminar la constante `E`. La evidencia es
-   interna: la calculadora de demostración tuvo que definir 6 de ellos a mano. Con la
-   infraestructura actual son ~9 ficheros triviales + export.
+1. ~~Ampliar la biblioteca estándar~~ — **hecha el 2026-07-09**, y más allá de lo previsto:
+   25 operadores nuevos en cinco campos. Aritmética (`mod`, `abs`, `floor`, `ceil`, `round`,
+   `trunc`, `sign`, `cbrt`, `ln`, `log`, `gcd`, `lcm`), trigonometría (`tan`, `asin`, `acos`,
+   `atan`), estadística variádica (`min`, `sum`, `prod`, `mean`, `median`, `stdev`,
+   `stdevp`), combinatoria infija de calculadora (`nCr`, `nPr`, precedencia 30), probabilidad
+   (`rand()`, nularia) y financieras (`fv`, `pv`, `pmt`). Todos con validación de dominio
+   (`ValueError`) y spec de integración propia (`standard-library.test.ts`).
 2. ~~Notación científica~~ — **hecha el 2026-07-07** (`1e5`, `2.5e-3`, con `e`/`E`
    reservadas; ver §4.4). De propina, separador de miles `_` (`1_523_245.45`).
 3. **Mensajes de error con posición** aproximada del token conflictivo.
@@ -376,14 +386,12 @@ tragaba los operandos sueltos) quedó resuelto por la multiplicación implícita
    `VariableEntity` como subclase de `ConstantEntity` (participa en la multiplicación
    implícita como constante con nombre), validación anticipada de colisiones y `e`/`E`
    prohibidas como nombres. Documentada en README con su propia sección.
-5. **API `compile()`** — parsear una vez, evaluar N veces (lo ofrecen expr-eval y mathjs):
-   ```ts
-   const area = compile('PI * r ^ 2');
-   area({ r: 1 }); // 3.14159…
-   area({ r: 2 }); // 12.56637…
-   ```
-   Encaja de forma natural: `compile` devuelve la `ExpressionEntity` (RPN ya construido)
-   envuelta en una closure que sustituye variables.
+5. ~~API `compile()`~~ — **hecha el 2026-07-09**, con el diseño previsto: `compile` construye
+   el RPN una vez (`CompileStandardExpressionUsecase`) y devuelve una closure
+   `(vars?) => number` que liga valores sobre copias inmutables (`ExpressionEntity.bind`).
+   Infraestructura de soporte: `VariableEntity` no ligada (lanza al leerse sin valor),
+   ligado parcial, y resolución diferida de identificadores en el builder. Documentada en
+   README con su propia sección.
 6. **Registro sin subclases** — reducir el boilerplate de extensión:
    ```ts
    defineOperator({ symbol: 'mod', operation: (a, b) => b % a, precedence: 20 });
@@ -422,7 +430,7 @@ npm y bundlephobia.
 | **tinymath** 1.2.1 | 16 k | 2022 | 706 kB | 🔴 Deprecado (era de Elastic/Kibana). |
 | **fparser** 4.2 | 8,4 k | 2025-12 | 215 kB | ✅ Activo; nicho pequeño, API de fórmulas con variables. |
 | **@cortex-js/compute-engine** 0.68 | 205 k | 2026-07 | 52,8 MB | ✅ Muy activo; CAS completo con MathJSON. Peso pesado, otra categoría. |
-| **@marckux/expression-evaluator** 0.1.0 | — | (pendiente) | 26,5 kB tarball · ~12 kB gzip | Este proyecto. |
+| **@marckux/expression-evaluator** 0.1.0 | — | (pendiente) | 32,2 kB tarball · ~14 kB gzip | Este proyecto. |
 
 ### 7.1 Lectura del mercado
 
@@ -438,12 +446,14 @@ npm y bundlephobia.
     errores tipados, extensibilidad más expresiva que la de expr-eval (posición, asociatividad,
     variádicos, validación de dominio), soporte RPN (rareza en la categoría), sin las clases de
     vulnerabilidad que mataron a la competencia, y mantenimiento vivo.
-  - *A favor (desde 2026-07-07):* **variables/scope** ligadas por llamada — era la carencia
-    número 1 y ya no lo es —, notación científica y multiplicación implícita (esta última
-    no la tiene casi nadie en la categoría).
-  - *En contra:* sin **compile()** (lo ofrecen expr-eval, fparser y mathjs: parsear una vez,
-    evaluar N veces), biblioteca de funciones más corta, sin comunidad ni track record
-    (versión 0.1.0, 0 descargas), solo CommonJS.
+  - *A favor (desde 2026-07-07/09):* **variables/scope** ligadas por llamada — era la
+    carencia número 1 y ya no lo es —, **`compile()`** (paridad con expr-eval, fparser y
+    mathjs en su caso de uso estrella: fórmulas parametrizadas evaluadas N veces), notación
+    científica y multiplicación implícita (esta última no la tiene casi nadie en la
+    categoría).
+  - *En contra:* sin comunidad ni track record (versión 0.1.0, 0 descargas), solo CommonJS.
+    (La biblioteca de funciones, antes "más corta", cuenta desde el 2026-07-09 con ~40
+    operadores en cinco campos — por encima de expr-eval.)
 - **Posicionamiento propuesto:** "el sustituto moderno y seguro de expr-eval para TypeScript".
   Objetivo realista para el primer año: ser útil, correcto y estar impecablemente documentado;
   las descargas son consecuencia, no meta.
@@ -475,15 +485,15 @@ silenciosos); CI en verde en el repo público.
 
 ### Fase 2 — 0.3.0 "Paridad y diferenciación" (2–4 sesiones)
 
-- Biblioteca estándar ampliada (§6.1).
-- **`compile()`** (§6.5) — el salto de valor comparativo que queda (las variables, §6.4, ya
-  están hechas).
+- Biblioteca estándar ampliada (§6.1) — lo único de la fase con valor comparativo que queda
+  (las variables, §6.4, y `compile()`, §6.5, ya están hechas).
 - `defineOperator`/`defineConstant` sin subclases (§6.6).
 - Property-based testing con fast-check.
 - README: sección de comparativa/benchmark y "por qué no expr-eval".
 
-**Criterio de salida:** `compile('PI * r ^ 2')({r: 2})` funciona documentado en README; la
-tabla de §7 deja de tener carencias en negrita.
+**Criterio de salida:** ~~`compile('PI * r ^ 2')({r: 2})` funciona documentado en README~~
+(cumplido el 2026-07-09); la tabla de §7 deja de tener carencias en negrita (queda la
+biblioteca de funciones).
 
 ### Fase 3 — 0.4.0 "Arquitectura" (refactor mayor, con la red de fase 2)
 
@@ -516,6 +526,8 @@ ningún breaking change en los exports existentes.
 | Literal `Infinity` | Aceptado por accidente | Decidir en fase 1: o documentar como feature o rechazar. |
 | Singleton `TokenMapper` | API pública | No romper: fachada sobre instancias en fase 3. |
 | Rango de precedencias | Documentado (1–999, README + JSDoc, 2026-07-08) | Falta la validación en el constructor, fase 1. |
+| Identificadores desconocidos | Variables no ligadas (resolución diferida, 2026-07-09): el error sale al evaluar, nombrándolas | Mantener — es lo que hace posible `compile()` con variables libres y lo que hace la competencia. Trade-off (los typos fallan tarde) documentado en README, "Design decisions". |
+| Patrón de nombres de variable | `[_$]?letras(_dígitos)?`, centralizado en `VARIABLE_NAME_PATTERN` (2026-07-09) | Mantener. Única fuente de verdad consumida por formatter, builder y validación de claves. `foo_bar` queda excluido a propósito (el `_` interior solo introduce dígitos: `x_2`). |
 | Nombre scoped `@marckux/…` | — | Mantener. Menor descubribilidad que un nombre plano, pero evita colisiones y el squatting; la descubribilidad se gana con README y keywords. |
 | Solo CommonJS | `module: commonjs` | Suficiente para 0.x (Node y todos los bundlers lo consumen); dual ESM/CJS en 1.0. |
 
