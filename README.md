@@ -1,6 +1,6 @@
-# @marckux/expression-evaluator
+# @marckux-dev/expression-evaluator
 
-[![npm version](https://img.shields.io/npm/v/%40marckux%2Fexpression-evaluator)](https://www.npmjs.com/package/@marckux/expression-evaluator)
+[![npm version](https://img.shields.io/npm/v/%40marckux-dev%2Fexpression-evaluator)](https://www.npmjs.com/package/@marckux-dev/expression-evaluator)
 [![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](package.json)
 [![types included](https://img.shields.io/badge/types-included-blue)](https://www.typescriptlang.org/)
 [![license MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -9,7 +9,7 @@
 operators in a few lines.**
 
 ```ts
-import { evaluate, compile } from '@marckux/expression-evaluator';
+import { evaluate, compile } from '@marckux-dev/expression-evaluator';
 
 evaluate('3 + 4 * (2 - 1)');             // 7
 evaluate('2PI');                         // 6.283… — implicit multiplication
@@ -52,7 +52,7 @@ usually overkill. This package sits in the middle:
 ## Install
 
 ```bash
-npm install @marckux/expression-evaluator
+npm install @marckux-dev/expression-evaluator
 ```
 
 TypeScript declarations ship with the package. CommonJS build, consumable from both `require`
@@ -61,7 +61,7 @@ and `import`.
 ## Usage
 
 ```ts
-import { evaluate } from '@marckux/expression-evaluator';
+import { evaluate } from '@marckux-dev/expression-evaluator';
 
 evaluate('3 + 4 * (2 - 1)');          // 7
 evaluate('sqrt(16) + 2 ^ 3');         // 12
@@ -185,7 +185,7 @@ cost (tokenizing, implicit multiplication, RPN conversion) a single time and ret
 plain function you call with the values:
 
 ```ts
-import { compile } from '@marckux/expression-evaluator';
+import { compile } from '@marckux-dev/expression-evaluator';
 
 const area = compile('PI * r ^ 2');
 area({ r: 1 });  // 3.141…
@@ -210,7 +210,7 @@ for dependency injection and typing.
 ### Reverse Polish notation
 
 ```ts
-import { evaluateRpn } from '@marckux/expression-evaluator';
+import { evaluateRpn } from '@marckux-dev/expression-evaluator';
 
 evaluateRpn('3 4 2 1 - * +');      // 7
 evaluateRpn('x 1 +', { x: 2 });    // 3 — variables work here too
@@ -226,7 +226,7 @@ applied internally. `formatNumber()` is an opt-in presentation helper for when y
 about to show a result to a user:
 
 ```ts
-import { evaluate, formatNumber } from '@marckux/expression-evaluator';
+import { evaluate, formatNumber } from '@marckux-dev/expression-evaluator';
 
 formatNumber(evaluate('sin(PI)'));       // '1.2246467991473532e-16' — no params, no rounding
 formatNumber(evaluate('sin(PI)'), 12);   // '0' — maxDecimals collapses floating-point noise
@@ -239,7 +239,7 @@ Both parameters are optional and independent: omit `maxDecimals` and/or
 ### Error handling
 
 ```ts
-import { evaluate, InvalidExpressionError, ValueError } from '@marckux/expression-evaluator';
+import { evaluate, InvalidExpressionError, ValueError } from '@marckux-dev/expression-evaluator';
 
 try {
   evaluate(userInput);
@@ -258,7 +258,7 @@ Operators are small classes. Register them once (e.g. at app startup) and every 
 `evaluate()` call understands them:
 
 ```ts
-import { evaluate, OperatorEntity, TokenMapper } from '@marckux/expression-evaluator';
+import { evaluate, OperatorEntity, TokenMapper } from '@marckux-dev/expression-evaluator';
 
 // Operands arrive in reverse order (they are popped from a stack).
 const modulo = (n1: number, n2: number): number => n2 % n1;
@@ -291,7 +291,7 @@ For a variadic operator (arguments separated by commas, like `max(1, 5, 3)`), se
 Constants work the same way:
 
 ```ts
-import { ConstantEntity, TokenMapper } from '@marckux/expression-evaluator';
+import { ConstantEntity, TokenMapper } from '@marckux-dev/expression-evaluator';
 
 class Phi extends ConstantEntity {
   constructor() { super((1 + Math.sqrt(5)) / 2); }

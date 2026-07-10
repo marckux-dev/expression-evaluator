@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`@marckux/expression-evaluator` — a zero-runtime-dependency npm **library** (TypeScript) that
+`@marckux-dev/expression-evaluator` — a zero-runtime-dependency npm **library** (TypeScript) that
 safely evaluates math expressions in standard infix notation (`3 + 4 * (2 - 1)`) or RPN, and is
 extensible with user-defined operators and constants. It was extracted from a Udemy course
 project (`~/web/udemy/typescript/evaluator`); that repo keeps the application shell (CLI/web

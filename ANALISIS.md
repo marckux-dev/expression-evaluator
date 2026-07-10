@@ -1,4 +1,4 @@
-# Análisis del proyecto — `@marckux/expression-evaluator`
+# Análisis del proyecto — `@marckux-dev/expression-evaluator`
 
 **Versión analizada:** 0.1.0 (previa a la primera publicación en npm)
 **Fecha:** 2026-07-06 · **Última revisión:** 2026-07-09 (`compile()` —parsear una vez,
@@ -430,7 +430,7 @@ npm y bundlephobia.
 | **tinymath** 1.2.1 | 16 k | 2022 | 706 kB | 🔴 Deprecado (era de Elastic/Kibana). |
 | **fparser** 4.2 | 8,4 k | 2025-12 | 215 kB | ✅ Activo; nicho pequeño, API de fórmulas con variables. |
 | **@cortex-js/compute-engine** 0.68 | 205 k | 2026-07 | 52,8 MB | ✅ Muy activo; CAS completo con MathJSON. Peso pesado, otra categoría. |
-| **@marckux/expression-evaluator** 0.1.0 | — | (pendiente) | 32,2 kB tarball · ~14 kB gzip | Este proyecto. |
+| **@marckux-dev/expression-evaluator** 0.1.0 | — | (pendiente) | 32,2 kB tarball · ~14 kB gzip | Este proyecto. |
 
 ### 7.1 Lectura del mercado
 
@@ -528,7 +528,7 @@ ningún breaking change en los exports existentes.
 | Rango de precedencias | Documentado (1–999, README + JSDoc, 2026-07-08) | Falta la validación en el constructor, fase 1. |
 | Identificadores desconocidos | Variables no ligadas (resolución diferida, 2026-07-09): el error sale al evaluar, nombrándolas | Mantener — es lo que hace posible `compile()` con variables libres y lo que hace la competencia. Trade-off (los typos fallan tarde) documentado en README, "Design decisions". |
 | Patrón de nombres de variable | `[_$]?letras(_dígitos)?`, centralizado en `VARIABLE_NAME_PATTERN` (2026-07-09) | Mantener. Única fuente de verdad consumida por formatter, builder y validación de claves. `foo_bar` queda excluido a propósito (el `_` interior solo introduce dígitos: `x_2`). |
-| Nombre scoped `@marckux/…` | — | Mantener. Menor descubribilidad que un nombre plano, pero evita colisiones y el squatting; la descubribilidad se gana con README y keywords. |
+| Nombre scoped `@marckux-dev/…` | — | Mantener. Menor descubribilidad que un nombre plano, pero evita colisiones y el squatting; la descubribilidad se gana con README y keywords. |
 | Solo CommonJS | `module: commonjs` | Suficiente para 0.x (Node y todos los bundlers lo consumen); dual ESM/CJS en 1.0. |
 
 ---
