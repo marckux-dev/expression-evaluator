@@ -1,6 +1,6 @@
 {
   "name": "@marckux-dev/expression-evaluator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Minimal, dependency-free and extensible math expression evaluator (infix and RPN). Teach it your own domain operators.",
   "keywords": [
     "math",
