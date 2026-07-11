@@ -42,6 +42,25 @@ describe('token.mapper.ts', () => {
     });
   });
 
+  describe('getSymbols', () => {
+    it('should include built-in operators and constants', () => {
+      const symbols = TokenMapper.getInstance().getSymbols();
+      expect(symbols).toEqual(expect.arrayContaining(['+', 'sin', 'sqrt', 'PI', 'mod']));
+    });
+
+    it('should include custom tokens once registered', () => {
+      TokenMapper.getInstance().registerToken(DummyToken);
+      expect(TokenMapper.getInstance().getSymbols()).toContain('__DUMMY_TOKEN__');
+    });
+
+    it('every symbol it returns should resolve through getToken', () => {
+      const mapper = TokenMapper.getInstance();
+      for (const symbol of mapper.getSymbols()) {
+        expect(mapper.getToken(symbol).getSymbol()).toBe(symbol);
+      }
+    });
+  });
+
   describe('getToken', () => {
     it('should return a token instance for a known symbol', () => {
       const token = TokenMapper.getInstance().getToken('+');

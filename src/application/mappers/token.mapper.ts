@@ -61,6 +61,15 @@ export class TokenMapper {
   }
 
   /**
+   * Every registered symbol, in registration order. Lets consumers build
+   * operator listings, keypads or autocompletion from the live registry
+   * (built-ins plus anything they registered).
+   */
+  public getSymbols(): string[] {
+    return [...this.tokenMap.keys()];
+  }
+
+  /**
    * Returns a new instance of the token registered under `symbol`.
    *
    * @throws {InvalidExpressionError} if the symbol is unknown.
