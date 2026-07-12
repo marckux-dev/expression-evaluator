@@ -1,6 +1,6 @@
 {
   "name": "@marckux-dev/expression-evaluator",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Minimal, dependency-free and extensible math expression evaluator (infix and RPN). Teach it your own domain operators.",
   "keywords": [
     "math",
@@ -23,16 +23,23 @@
     "url": "https://github.com/marckux-dev/expression-evaluator/issues"
   },
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     }
   },
   "sideEffects": false,
   "engines": {
-    "node": ">=14"
+    "node": ">=18"
   },
   "files": [
     "dist",
@@ -43,7 +50,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -57,6 +65,7 @@
     "rimraf": "^6.0.1",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
+    "tsup": "^8.5.1",
     "typescript": "^5.5.4"
   }
 }

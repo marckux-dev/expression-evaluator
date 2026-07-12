@@ -1,7 +1,7 @@
-import {TokenInterface} from "./token.interface";
-import {ConstantEntity} from "./constant.entity";
-import {InvalidExpressionError, ValueError} from "./errors";
-import {EofController} from "./controllers";
+import { TokenInterface } from './token.interface';
+import { ConstantEntity } from './constant.entity';
+import { InvalidExpressionError, ValueError } from './errors';
+import { EofController } from './controllers';
 
 export const MAX_OPERATOR_PRECEDENCE = 999;
 
@@ -39,13 +39,30 @@ export interface OperatorEntityOptions {
    */
   symbol: string;
   /**
-   * The function that computes the result. Its arity (`operation.length`)
-   * determines how many operands the operator consumes.
+   * The function that computes the result. By default its arity
+   * (`operation.length`) sets how many operands the operator consumes;
+   * override that with {@link OperatorEntityOptions.arity} when
+   * `operation.length` does not reflect the real arity.
    *
    * Operands are popped from a stack, so they arrive **in reverse order**:
    * for `10 / 2` the operation receives `(2, 10)`.
    */
   operation: (...operands: number[]) => number;
+
+  /**
+   * Optional arity: how many operands the operator consumes. Defaults to
+   * `operation.length`.
+   *
+   * Set it explicitly when `operation.length` lies about the arity — most
+   * often an operation written with rest parameters (`(...operands)`),
+   * whose `.length` is `0`, that must nonetheless take a **fixed** number of
+   * operands (e.g. a user-defined function of N parameters).
+   *
+   * `0` means **variadic**: consume operands until the EOF sentinel that
+   * marks where the argument list starts.
+   */
+  arity?: number;
+
   /**
    * Optional domain check, called with the same (reversed) operands before
    * `operation`. Either return `false` — which raises a generic
@@ -90,10 +107,10 @@ export interface OperatorEntityOptions {
  * TokenMapper.getInstance().registerToken(ModuloOperator);
  * ```
  *
- * For a variadic operator (like `max(1, 5, 3)`) set
- * `this.numberOfOperands = 0` after calling `super(...)`: the operator will
- * then collect operands until it finds the EOF sentinel that marks where
- * its argument list started.
+ * For a variadic operator (like `max(1, 5, 3)`) pass `arity: 0`: the
+ * operator will then collect operands until it finds the EOF sentinel that
+ * marks where its argument list started. (A subclass may equivalently set
+ * `this.numberOfOperands = 0` after `super(...)`.)
  */
 export class OperatorEntity implements TokenInterface {
   public readonly symbol: string;
@@ -110,6 +127,7 @@ export class OperatorEntity implements TokenInterface {
     const {
       symbol,
       operation,
+      arity,
       validation = (...operands) => true,
       precedence = 1,
       position = OperatorPosition.INFIX,
@@ -118,7 +136,7 @@ export class OperatorEntity implements TokenInterface {
     this.symbol = symbol;
     this.operation = operation;
     this.validation = validation;
-    this.numberOfOperands = operation.length;
+    this.numberOfOperands = arity ?? operation.length;
     this.precedence = precedence;
     this.position = position;
     this.associativity = associativity;
@@ -155,13 +173,17 @@ export class OperatorEntity implements TokenInterface {
     while (numberOfOperands === 0 || n > 0) {
       const token = stack.pop();
       if (token === undefined) {
-        throw new InvalidExpressionError(`Operator ${this.getSymbol()} has not enough operands.`);
+        throw new InvalidExpressionError(
+          `Operator ${this.getSymbol()} has not enough operands.`
+        );
       }
       if (token instanceof EofController) {
         if (numberOfOperands === 0) {
           break;
         } else {
-          throw new InvalidExpressionError(`Unexpected EOF for operator ${this.getSymbol()}`);
+          throw new InvalidExpressionError(
+            `Unexpected EOF for operator ${this.getSymbol()}`
+          );
         }
       }
       if (token instanceof ConstantEntity) {
@@ -174,5 +196,4 @@ export class OperatorEntity implements TokenInterface {
     }
     stack.push(new ConstantEntity(this.operation(...operands)));
   }
-
 }

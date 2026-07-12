@@ -11,6 +11,9 @@ export {
   CompiledExpression,
 } from './application/usecases/compile-standard-expression.usecase';
 
+// User-defined functions: register a named prefix operator from an expression
+export { DefineFunctionUsecase } from './application/usecases/define-function.usecase';
+
 // Display formatting (not used internally: evaluate()/evaluateRpn() always
 // return full precision; rounding is opt-in, for presentation only)
 export { FormatNumberUsecase } from './application/usecases/format-number.usecase';
@@ -26,6 +29,9 @@ export {
   OperatorAssociativity,
   ConstantEntity,
   TokenInterface,
+  // The single source of truth for what a valid variable/identifier looks
+  // like, so consumers can pre-validate names the same way the parser does.
+  VARIABLE_NAME_PATTERN,
 } from './domain/entities';
 export { TokenMapper } from './application/mappers';
 
@@ -35,6 +41,7 @@ import {
   CompileStandardExpressionUsecase,
   CompiledExpression,
 } from './application/usecases/compile-standard-expression.usecase';
+import { DefineFunctionUsecase } from './application/usecases/define-function.usecase';
 import { FormatNumberUsecase } from './application/usecases/format-number.usecase';
 
 /**
@@ -96,6 +103,41 @@ export function evaluateRpn(expression: string, variables?: Record<string, numbe
  */
 export function compile(expression: string): CompiledExpression {
   return new CompileStandardExpressionUsecase().execute(expression);
+}
+
+/**
+ * Defines a reusable function from an expression and registers it as a named
+ * prefix operator, so it can be used in later expressions exactly like a
+ * built-in (`sin`, `sqrt`). The body is parsed once; `params` are its inputs,
+ * bound positionally on each call. Functions compose and combine freely
+ * (`f(g(x))`, `p(x) + q(x)`) because to the parser they are ordinary
+ * operators.
+ *
+ * The definition is **process-global** (registered in the shared
+ * {@link TokenMapper}) and re-defining a name replaces the previous one. A
+ * function's body captures the definitions in scope at definition time, so
+ * redefining a dependency does not alter functions already defined.
+ *
+ * @param name The symbol the function is called by. Use a word (letters),
+ *   without trailing digits — the tokenizer splits `f2` into `f` and `2`.
+ * @param params The parameter names, in order; their count is the arity.
+ * @param body The expression to evaluate, using `params` as its variables
+ *   (plus constants and any previously defined functions).
+ *
+ * @example
+ * defineFunction('hyp', ['x', 'y'], 'sqrt(x ^ 2 + y ^ 2)');
+ * evaluate('hyp(3, 4)'); // 5
+ *
+ * defineFunction('dbl', ['x'], '2 x');
+ * defineFunction('f', ['x'], 'dbl(x) + 1');
+ * evaluate('f(5)'); // 11
+ *
+ * @throws {InvalidExpressionError} if the body is malformed. Errors that
+ *   depend on the arguments (a free variable not in `params`, an
+ *   out-of-domain operand) surface when the function is called.
+ */
+export function defineFunction(name: string, params: string[], body: string): void {
+  return new DefineFunctionUsecase().execute(name, params, body);
 }
 
 /**

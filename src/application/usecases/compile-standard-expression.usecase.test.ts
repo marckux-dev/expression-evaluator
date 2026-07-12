@@ -33,6 +33,30 @@ describe('compile-standard-expression.usecase', () => {
 
   });
 
+  describe('free variables (.variables)', () => {
+
+    it('lists the free variable names of the expression', () => {
+      expect(compiler.execute('x ^ 2 + y ^ 2').variables).toEqual(['x', 'y']);
+    });
+
+    it('deduplicates repeated variables', () => {
+      expect(compiler.execute('x + x * x').variables).toEqual(['x']);
+    });
+
+    it('is empty for an expression with no variables', () => {
+      expect(compiler.execute('2 + sin(PI)').variables).toEqual([]);
+    });
+
+    it('does not list registered tokens (constants, operators) as variables', () => {
+      expect(compiler.execute('PI * r ^ 2').variables).toEqual(['r']);
+    });
+
+    it('sees through implicit multiplication (2x finds x)', () => {
+      expect(compiler.execute('2x + 3y_2').variables).toEqual(['x', 'y_2']);
+    });
+
+  });
+
   describe('invocation', () => {
 
     it('should evaluate a constant expression with no variables', () => {

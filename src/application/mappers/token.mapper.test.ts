@@ -1,5 +1,5 @@
 import { TokenMapper } from './token.mapper';
-import { TokenInterface } from '../../domain/entities';
+import { TokenInterface, OperatorEntity, OperatorPosition } from '../../domain/entities';
 import { InvalidExpressionError } from '../../domain/entities/errors/invalid-expression.error';
 
 class DummyToken implements TokenInterface {
@@ -11,6 +11,12 @@ class DummyToken implements TokenInterface {
 class OtherDummyToken implements TokenInterface {
   getSymbol(): string {
     return '__DUMMY_TOKEN__';
+  }
+}
+
+class DummyFactoryToken implements TokenInterface {
+  getSymbol(): string {
+    return '__FACTORY_TOKEN__';
   }
 }
 
@@ -114,6 +120,84 @@ describe('token.mapper.ts', () => {
       expect(() => TokenMapper.getInstance().registerToken(UppercaseE)).toThrow(/reserved/);
       expect(TokenMapper.getInstance().has('e')).toBe(false);
       expect(TokenMapper.getInstance().has('E')).toBe(false);
+    });
+  });
+
+  describe('registerFactory', () => {
+    it('should register a factory-built token under its symbol', () => {
+      TokenMapper.getInstance().registerFactory(
+        '__FACTORY_TOKEN__',
+        () => new DummyFactoryToken()
+      );
+      expect(TokenMapper.getInstance().has('__FACTORY_TOKEN__')).toBe(true);
+      expect(TokenMapper.getInstance().getSymbols()).toContain('__FACTORY_TOKEN__');
+    });
+
+    it('should make the token retrievable via getToken', () => {
+      TokenMapper.getInstance().registerFactory(
+        '__FACTORY_TOKEN__',
+        () => new DummyFactoryToken()
+      );
+      const token = TokenMapper.getInstance().getToken('__FACTORY_TOKEN__');
+      expect(token).toBeInstanceOf(DummyFactoryToken);
+      expect(token.getSymbol()).toBe('__FACTORY_TOKEN__');
+    });
+
+    it('should call the factory anew on every getToken (fresh instances)', () => {
+      TokenMapper.getInstance().registerFactory(
+        '__FACTORY_TOKEN__',
+        () => new DummyFactoryToken()
+      );
+      const token1 = TokenMapper.getInstance().getToken('__FACTORY_TOKEN__');
+      const token2 = TokenMapper.getInstance().getToken('__FACTORY_TOKEN__');
+      expect(token1).not.toBe(token2);
+    });
+
+    it('should replace a previously registered symbol', () => {
+      const mapper = TokenMapper.getInstance();
+      mapper.registerFactory('__FACTORY_TOKEN__', () => new DummyFactoryToken());
+      mapper.registerFactory('__FACTORY_TOKEN__', () => new OtherDummyToken());
+      expect(mapper.getToken('__FACTORY_TOKEN__')).toBeInstanceOf(OtherDummyToken);
+    });
+
+    it('should reject the reserved exponent symbols e and E', () => {
+      const mapper = TokenMapper.getInstance();
+      expect(() => mapper.registerFactory('e', () => new DummyFactoryToken())).toThrow(/reserved/);
+      expect(() => mapper.registerFactory('E', () => new DummyFactoryToken())).toThrow(/reserved/);
+      expect(mapper.has('e')).toBe(false);
+      expect(mapper.has('E')).toBe(false);
+    });
+
+    it('should unregister a token so the symbol becomes free again', () => {
+      const mapper = TokenMapper.getInstance();
+      mapper.registerFactory('__TEMP__', () => new DummyFactoryToken());
+      expect(mapper.has('__TEMP__')).toBe(true);
+      expect(mapper.unregister('__TEMP__')).toBe(true);
+      expect(mapper.has('__TEMP__')).toBe(false);
+      expect(mapper.getSymbols()).not.toContain('__TEMP__');
+      expect(() => mapper.getToken('__TEMP__')).toThrow(InvalidExpressionError);
+    });
+
+    it('unregister returns false for a symbol that was never registered', () => {
+      expect(TokenMapper.getInstance().unregister('__NEVER_THERE__')).toBe(false);
+    });
+
+    it('should register an operation whose factory closes over runtime state', () => {
+      // A factory can carry state a no-arg class cannot: here the added
+      // constant is captured in the closure, not hardcoded in a class.
+      const addend = 7;
+      const symbol = '__ADD7__';
+      TokenMapper.getInstance().registerFactory(symbol, () =>
+        new OperatorEntity({
+          symbol,
+          operation: (n: number) => n + addend,
+          precedence: 85,
+          position: OperatorPosition.PREFIX,
+        })
+      );
+      const token = TokenMapper.getInstance().getToken(symbol);
+      expect(token).toBeInstanceOf(OperatorEntity);
+      expect((token as OperatorEntity).operation(3)).toBe(10);
     });
   });
 });

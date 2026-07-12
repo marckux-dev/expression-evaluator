@@ -1,6 +1,6 @@
 import { StandardExpressionBuilder } from '../builders/standard.expression.builder';
 import { ExpressionBuilder } from '../builders';
-import { ExpressionEntity } from '../../domain/entities';
+import { ExpressionEntity, VariableEntity } from '../../domain/entities';
 import { InvalidExpressionError } from '../../domain/entities/errors';
 
 /**
@@ -8,12 +8,20 @@ import { InvalidExpressionError } from '../../domain/entities/errors';
  * mapping of variable names to values; call it as many times as you like
  * with different values without re-parsing.
  *
+ * `variables` lists the free variable names the expression uses (in first
+ * appearance order, deduplicated), so callers can know its inputs without
+ * re-parsing the source — a dependency graph, a form generator or an
+ * argument validator can be built directly from it.
+ *
  * @throws {InvalidExpressionError} if a supplied name is malformed or
  *   collides with a token, or if a variable used by the expression has no
  *   value in this call.
  * @throws {ValueError} if an operand is out of an operator's domain.
  */
-export type CompiledExpression = (variables?: Record<string, number>) => number;
+export type CompiledExpression = ((variables?: Record<string, number>) => number) & {
+  /** Free variable names of the expression, deduplicated. */
+  readonly variables: string[];
+};
 
 /**
  * Compiles a standard (infix) expression once and returns a
@@ -59,11 +67,23 @@ export class CompileStandardExpressionUsecase {
       throw new InvalidExpressionError('The expression is empty');
     }
 
-    return (variables: Record<string, number> = {}) => {
+    // Free variables: the tokenizer turned every identifier that is not a
+    // registered token into an (unbound) VariableEntity.
+    const variables = [
+      ...new Set(
+        compiled
+          .getTokens()
+          .filter((token): token is VariableEntity => token instanceof VariableEntity)
+          .map((token) => token.getSymbol())
+      ),
+    ];
+
+    const call = (values: Record<string, number> = {}) => {
       // Validate the supplied names on every call (collisions with tokens,
       // reserved e/E, malformed names): bind() alone would ignore them.
-      ExpressionBuilder.validateVariablesCollision(variables);
-      return compiled.bind(variables).getValue();
+      ExpressionBuilder.validateVariablesCollision(values);
+      return compiled.bind(values).getValue();
     };
+    return Object.assign(call, { variables });
   }
 }

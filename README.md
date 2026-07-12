@@ -9,7 +9,7 @@
 operators in a few lines.**
 
 ```ts
-import { evaluate, compile } from '@marckux-dev/expression-evaluator';
+import { evaluate, compile, defineFunction } from '@marckux-dev/expression-evaluator';
 
 evaluate('3 + 4 * (2 - 1)');             // 7
 evaluate('2PI');                         // 6.283… — implicit multiplication
@@ -20,6 +20,9 @@ evaluate('5!');                          // 120
 const p = compile('x ^ 2 + y ^ 2');      // parse once…
 p({ x: 3, y: 4 });                       // 25 — …evaluate many
 p({ x: 5, y: 12 });                      // 169
+
+defineFunction('hyp', ['x', 'y'], 'sqrt(x^2 + y^2)');
+evaluate('hyp(3, 4)');                   // 5 — user-defined functions, they compose
 ```
 
 No `eval()`, no `new Function()`, no dependencies — just a small, strict-TypeScript
@@ -55,8 +58,8 @@ usually overkill. This package sits in the middle:
 npm install @marckux-dev/expression-evaluator
 ```
 
-TypeScript declarations ship with the package. CommonJS build, consumable from both `require`
-and `import`.
+Dual ESM/CJS build: `import` gets a native ES module, `require` gets CommonJS, each with its
+own TypeScript declarations. Node ≥ 18.
 
 ## Usage
 
@@ -204,8 +207,59 @@ Compilation is eager and calls are stateless:
 - `compile(expr)(values)` is exactly equivalent to `evaluate(expr, values)` — same
   pipeline, different moment of binding.
 
+A compiled expression also knows its **free variables** — in order of first appearance:
+
+```ts
+const f = compile('x + 2y + PI');
+f.variables; // ['x', 'y'] — constants and operators are not variables
+```
+
+This is what you want for building dependency graphs (which cells does this spreadsheet
+formula read?) or for validating user input before the first call.
+
 The `CompiledExpression` type and the `CompileStandardExpressionUsecase` class are exported
 for dependency injection and typing.
+
+### User-defined functions
+
+`defineFunction(name, params, body)` turns an expression into a named function that later
+expressions can call — and combine, nest and pass to other functions — exactly like a
+built-in:
+
+```ts
+import { defineFunction, evaluate } from '@marckux-dev/expression-evaluator';
+
+defineFunction('double', ['x'], '2x');
+defineFunction('hyp', ['x', 'y'], 'sqrt(x ^ 2 + y ^ 2)');
+
+evaluate('hyp(3, 4)');           // 5
+evaluate('double(hyp(3, 4))');   // 10 — functions compose
+evaluate('2 hyp(3, 4)');         // 10 — and take part in implicit multiplication
+
+defineFunction('norm', ['x', 'y', 'r'], 'hyp(x, y) / r');
+evaluate('norm(3, 4, 10)');      // 0.5 — bodies can call earlier definitions
+```
+
+Under the hood the function is registered as a prefix operator (precedence 85, like `sin`
+and `sqrt`), which is why composition needs no special machinery: to the parser it *is* an
+ordinary function. The rules:
+
+- **The body is parsed once**, at definition: a malformed body throws
+  `InvalidExpressionError` immediately. Errors that depend on the arguments (a division by
+  zero, a free variable that is not among `params`) surface when the function is called.
+- **Parameters bind positionally**: `params` names the body's variables in argument order.
+- **Definitions are process-global** (they live in the shared `TokenMapper`), and redefining
+  a name replaces it. A body captures the definitions in scope *at definition time*:
+  redefining `hyp` later does not change what `norm` computes.
+- **Name functions with letters only** (`hyp`, `myFn`). The tokenizer splits a trailing
+  digit off a word — `f2(3)` reads as `f * 2 * (3)` — so digits and underscores in function
+  names will not do what you expect. Names are not checked against built-ins either:
+  defining `sin` replaces `sin` (see the registry notes below).
+- **A definition can be removed** with `TokenMapper.getInstance().unregister(name)`; the
+  name becomes a free variable again in later parses. Expressions compiled while the
+  function existed keep working.
+
+`DefineFunctionUsecase` is exported for dependency injection and typing.
 
 ### Reverse Polish notation
 
@@ -279,14 +333,42 @@ evaluate('10 mod 3'); // 1
 | Option | Description |
 | --- | --- |
 | `symbol` | Token in the expression: a symbol (`%`) or a word (`mod`). |
-| `operation` | The function. Its arity (`operation.length`) sets the number of operands. Operands arrive in reverse order. |
+| `operation` | The function. By default its arity (`operation.length`) sets the number of operands. Operands arrive in reverse order. |
+| `arity` | Optional. Overrides `operation.length` as the number of operands — required when `operation` uses rest parameters (`(...args)` reports length 0). `arity: 0` means **variadic**: the operator collects every comma-separated argument, like `max(1, 5, 3)`. |
 | `validation` | Optional. Checks operands: return `false` (or throw `ValueError` with your own message) for out-of-domain values. |
 | `precedence` | Higher binds tighter; valid range 1–999. References: `+`/`-` 10, `*`/`/` 20, functions (`sin`, `sqrt`, `max`) 85, unary `+`/`-` 90, `^`/`!` 95. |
 | `position` | `PREFIX`, `INFIX` (default) or `POSTFIX` (like `!`). Declare function-like operators as `PREFIX` so they take part in implicit multiplication (`2 sin PI`). |
 | `associativity` | `LEFT` (default) or `RIGHT` (like `^`). |
 
-For a variadic operator (arguments separated by commas, like `max(1, 5, 3)`), set
-`this.numberOfOperands = 0` in the constructor after calling `super(...)`.
+Two examples using `arity`:
+
+```ts
+// Variadic: any number of comma-separated arguments.
+class RangeOperator extends OperatorEntity {
+  constructor() {
+    super({
+      symbol: 'range',
+      operation: (...values: number[]) => Math.max(...values) - Math.min(...values),
+      arity: 0, // variadic
+      precedence: 85,
+      position: OperatorPosition.PREFIX,
+    });
+  }
+}
+
+// Fixed arity with a rest-parameter implementation: state it explicitly.
+class LogBaseOperator extends OperatorEntity {
+  constructor() {
+    super({
+      symbol: 'logb', // logb(base, x); word symbols take letters only — 'atan2' would tokenize as 'atan' * 2
+      operation: (...args: number[]) => Math.log(args[0]) / Math.log(args[1]), // reverse order: args[0] is x
+      arity: 2,
+      precedence: 85,
+      position: OperatorPosition.PREFIX,
+    });
+  }
+}
+```
 
 Constants work the same way:
 
@@ -303,6 +385,48 @@ TokenMapper.getInstance().registerToken(Phi);
 
 UPPERCASE names for constants and lowercase for operators and variables is the recommended
 convention. Registered tokens are process-global: register at startup, once.
+
+### Managing the registry
+
+The `TokenMapper` singleton is the registry behind every parse, and it exposes more than
+`registerToken`:
+
+```ts
+// A factory can close over runtime state a no-arg class cannot carry —
+// here, an `ans` constant that always reads the previous result:
+let ans = 0;
+class AnsConstant extends ConstantEntity {
+  getSymbol(): string { return 'ans'; }
+}
+
+const mapper = TokenMapper.getInstance();
+mapper.registerFactory('ans', () => new AnsConstant(ans));
+
+ans = evaluate('2 + 3');   // 5
+evaluate('ans * 2');       // 10 — the factory captured the live variable
+
+mapper.has('ans');         // true — check before registering, or resolve collisions
+mapper.getSymbols();       // every registered symbol: build listings, keypads, completion
+mapper.unregister('ans');  // remove it; returns whether it existed
+```
+
+- **`registerFactory(symbol, factory)`** registers a plain function returning a token, so
+  the token can close over runtime state a no-arg class cannot carry — it is what
+  `defineFunction` uses to attach a compiled body to an operator. The factory must return a
+  **fresh instance on every call** (the parser mutates token state per occurrence) whose
+  `getSymbol()` matches the registered symbol.
+- **The registry is permissive by design**: registering an existing symbol replaces it, and
+  `unregister` removes *anything* — including built-ins. Beware: unregistering a built-in
+  (`unregister('+')`) is irreversible for the process, because built-in token classes are
+  not part of the public API and only come back on the next process start. If your app
+  distinguishes "my tokens" from built-ins, keep your own bookkeeping (or snapshot
+  `getSymbols()` at startup) and gate on `has()` before touching a symbol.
+- `e`/`E` are always rejected as symbols — they belong to the numeric exponent notation
+  (`2e5`).
+
+The `VARIABLE_NAME_PATTERN` regex is exported too: it is the single source of truth for
+what the parser accepts as a variable/identifier name, so consumers can pre-validate names
+exactly the same way.
 
 ## Design decisions
 
@@ -329,12 +453,13 @@ Deliberate choices you might otherwise report as bugs:
 
 ```bash
 npm install
-npm test               # jest — 286 tests
+npm test               # jest — 329 tests
 npm run test:coverage  # ~99% statement coverage
-npm run build          # compiles to dist/ with type declarations
+npm run build          # tsup — dual ESM/CJS bundles + type declarations in dist/
+npm run typecheck      # tsc --noEmit over the build config
 ```
 
-The source is ~1 400 lines of strict TypeScript in two layers (pure domain + application
+The source is ~1 500 lines of strict TypeScript in two layers (pure domain + application
 pipeline) — small enough to read in one sitting.
 
 ## License
